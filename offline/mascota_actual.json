@@ -1,0 +1,16 @@
+{
+  "IdUsuarioMascota": null,
+  "IdUsuario": null,
+  "IdMascota": null,
+  "Tipo": null,
+  "FechaAdopcion": null,
+  "Activa": 1,
+  "Nivel": 1,
+  "Experiencia": 0,
+  "ExperienciaNecesaria": 100,
+  "Felicidad": 100,
+  "Energia": 100,
+  "Hambre": 0,
+  "Monedas": 0,
+  "Estado": "Feliz"
+}
