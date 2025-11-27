@@ -20,8 +20,15 @@ app.use(cors());
 app.use(express.json());
 
 // ==================== STATIC FILES ====================
-app.use(express.static(path.join(__dirname, 'fronted')));
-app.use('/imagvideos', express.static(path.join(__dirname, 'imagvideos')));
+app.use(express.static(path.join(__dirname, '..', 'fronted')));
+app.use('/imagvideos', express.static(path.join(__dirname, '..', 'imagvideos')));
+
+// ==================== INDEX ====================
+app.get('/', (req, res) => {
+  const filePath = path.join(__dirname, '..', 'fronted', 'index.html');
+  if (fs.existsSync(filePath)) return res.sendFile(filePath);
+  return res.status(404).send('Archivo index.html no encontrado');
+});
 
 // ==================== JWT ====================
 const JWT_SECRET = process.env.JWT_SECRET || 'salud_mental_secreto_2024';
@@ -470,7 +477,11 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
       const emocionesResult = await sqliteGet('SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = ?', [userId]);
       const ejerciciosResult = await sqliteGet('SELECT COUNT(*) as Total FROM SesionesEjercicio WHERE IdUsuario = ?', [userId]);
       const retosResult = await sqliteGet('SELECT COUNT(*) as Total FROM ProgresoRetos WHERE IdUsuario = ? AND Completado = 1', [userId]);
-      const diasResult = await sqliteGet('SELECT COUNT(DISTINCT date(FechaRegistro)) as Dias FROM RegistroEmocional WHERE IdUsuario = ? AND FechaRegistro >= datetime(\'now\', '-7 day')', [userId]);
+      const diasResult = await sqliteGet(
+  "SELECT COUNT(DISTINCT date(FechaRegistro)) as Dias FROM RegistroEmocional WHERE IdUsuario = ? AND FechaRegistro >= datetime('now', '-7 day')",
+  [userId]
+);
+
       return res.json({ emocionesRegistradas: emocionesResult.Total || 0, ejerciciosRealizados: ejerciciosResult.Total || 0, retosCompletados: retosResult.Total || 0, diasConsecutivos: diasResult.Dias || 0 });
     } else {
       const emocionesResult = await sqlRequestFromParams({ idUsuario: userId }).query('SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = @idUsuario');
