@@ -77,12 +77,20 @@ function initSqlite() {
   });
 }
 
-// Initialize appropriate DB
 if (USE_SQLITE) {
   initSqlite();
+
+  // 🟢 Crear Mascotas base cuando SQLite esté listo
+  setTimeout(() => {
+    ensureSQLiteMascotas().catch(err =>
+      console.error("❌ Error creando Mascotas:", err)
+    );
+  }, 500);
+
 } else {
   connectSqlServer();
 }
+
 
 // Helper: run SQL Server with inputs builder
 function sqlRequestFromParams(params = {}) {
@@ -122,6 +130,30 @@ function sqliteRun(q, params = []) {
 function replaceSqlParams(query) {
   // replace @param with ? — note: order matters, endpoints below will provide params array in same order
   return query.replace(/@\w+/g, '?');
+}
+
+async function ensureSQLiteMascotas() {
+  await sqliteRun(`
+    CREATE TABLE IF NOT EXISTS Mascotas (
+      IdMascota INTEGER PRIMARY KEY AUTOINCREMENT,
+      Nombre TEXT,
+      Tipo TEXT,
+      Imagen TEXT
+    )
+  `);
+
+  const count = await sqliteGet(`SELECT COUNT(*) AS total FROM Mascotas`);
+
+  if (count.total === 0) {
+    console.log("🐾 Insertando mascotas base en SQLite…");
+
+    await sqliteRun(`
+      INSERT INTO Mascotas (Nombre, Tipo, Imagen) VALUES
+      ('axolote', 'axolote', 'imagvideos/axolo.png'),
+      ('caracol', 'caracol', 'imagvideos/caracoli.png'),
+      ('dinosaurio', 'dinosaurio', 'imagvideos/dinosau.png')
+    `);
+  }
 }
 
 // ================ START ROUTES ================
@@ -471,6 +503,7 @@ app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
     }
   } catch (err) { console.error('⚠ Error SQL en mascota/actualizar:', err); return res.status(500).json({ error: 'Error actualizando mascota' }); }
 });
+
 
 // ----------------- ESTADÍSTICAS -----------------
 app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
