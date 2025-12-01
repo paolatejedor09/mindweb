@@ -4513,60 +4513,85 @@ stat-card {
 }
 
 
-// ==================== CONFIGURACIÓN API ====================
-const API_BASE_URL = 'http://localhost:3000'; // Ajusta el puerto si es necesario
+// ==================== CONFIGURACIÓN API ==================== 
+// Detecta si estás en local o producción
+const API_BASE_URL = window.location.hostname === "localhost"
+  ? "http://localhost:3000"   // tu backend local
+  : window.location.origin;   // Render u otro dominio en producción
 
 let mesActual = new Date().getMonth();
 let añoActual = new Date().getFullYear();
 const hoyString = new Date().toISOString().slice(0,10); // YYYY-MM-DD
 let emociones = []; // cargadas desde BD
 
-/* ---------- Función genérica para peticiones con JWT ---------- */
+// ---------- Función genérica para peticiones a la API ----------
 async function apiRequest(endpoint, options = {}) {
-    // endpoint debe comenzar con '/': e.g. '/auth/login', '/emociones', '/calendario/usuario'
-    const token = localStorage.getItem('authToken');
+
+    // Detectar si estás en Render
+    const isRender = window.location.hostname.includes("onrender.com");
+
+    // Cambiar automáticamente entre local y Render
+    const API_BASE_URL = isRender
+        ? "https://mindweb.onrender.com"  // Tu backend en Render
+        : "http://localhost:3000";        // Localhost
+
     const url = `${API_BASE_URL}${endpoint}`;
+    const token = localStorage.getItem('authToken');
 
     const config = {
         method: options.method || 'GET',
         headers: {
             'Content-Type': 'application/json'
-        }
+        },
+        ...options
     };
 
     if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;
     }
-    if (options.body) {
+
+    if (options.body && typeof options.body === 'object') {
         config.body = JSON.stringify(options.body);
     }
 
-    try {
-        const resp = await fetch(url, config);
+    console.log("🌐 API Request →", url, config);
 
-        // Si backend devuelve 401/403 — forzamos logout si corresponde
-        if (resp.status === 401) {
-            // token inválido/expirado
+    try {
+        const response = await fetch(url, config);
+
+        // Sesión inválida → forzar logout
+        if (response.status === 401 || response.status === 403) {
             logout();
-            throw new Error('Sesión expirada. Inicia sesión de nuevo.');
+            throw new Error("Sesión expirada o no autorizada.");
         }
 
-        // Intentar parsear JSON (si hay)
         let data = null;
-        try { data = await resp.json(); } catch(e){ /* no JSON */ }
+        try {
+            data = await response.json();
+        } catch (e) {
+            console.warn("⚠ Respuesta no JSON:", e);
+        }
 
-        if (!resp.ok) {
-            // si el backend envía { error: '...' } preferimos esa cadena
-            const errMsg = data?.error || data?.message || `Error ${resp.status}`;
-            throw new Error(errMsg);
+        if (!response.ok) {
+            const msg = data?.error || data?.message || `Error ${response.status}`;
+            throw new Error(msg);
         }
 
         return data;
+
     } catch (err) {
-        console.error('apiRequest error:', err, { url, options });
+        console.error("🔥 apiRequest ERROR:", err);
         throw err;
     }
 }
+
+// ===============================================
+// Compatibilidad antigua: apiCall = apiRequest
+// ===============================================
+async function apiCall(endpoint, options = {}) {
+    return apiRequest(endpoint, options);
+}
+
 
 // ==================== NAVEGACIÓN ENTRE SECCIONES ====================
 function showSection(section) {
@@ -4644,7 +4669,7 @@ async function login() {
         localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
         localStorage.setItem('userEmail', data.user.email || data.user.Correo || '');
         localStorage.setItem('userAvatar', data.user.avatar || data.user.Avatar || 'default');
-        
+
         // 🔥 Asegurar que el idUsuario se guarda correctamente
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
@@ -4662,7 +4687,7 @@ async function login() {
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
-        updateUserInfo(); // ✅ Ahora esta función existe
+        updateUserInfo();
         await loadUserData();
 
         // Cargar perfil
@@ -4694,6 +4719,7 @@ function logout() {
 }
 
 
+/* ---------- register ---------- */
 async function register() {
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
@@ -4712,7 +4738,7 @@ async function register() {
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
         localStorage.setItem('userAvatar', data.user.avatar || 'default');
-        
+
         // 🔥 Asegurar que el idUsuario se guarda correctamente
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
@@ -4724,10 +4750,10 @@ async function register() {
         localStorage.setItem("mascota_idUsuario", idUsuario);
         if (typeof mascota !== "undefined") {
             mascota.idUsuario = idUsuario;
-        }
+        } 
 
         mostrarPantalla('main-app');
-        updateUserInfo(); // ✅ Ahora esta función existe
+        updateUserInfo();
         await loadUserData();
         setupUserAvatar();
 
@@ -4739,7 +4765,6 @@ async function register() {
         alert('Error: ' + err.message);
     }
 }
-
 
 /* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
 async function cargarDatosPerfil() {

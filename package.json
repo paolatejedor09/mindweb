@@ -4,7 +4,8 @@
   "main": "server/server.dual.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server/server.dual.js"
+    "start": "node server/server.dual.js",
+    "build": "echo 'Building frontend (no build required)'"
   },
   "dependencies": {
     "express": "^4.19.0",
