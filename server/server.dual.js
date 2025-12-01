@@ -1,6 +1,4 @@
-// server.dual.js - DUAL DB: SQL Server (local) + SQLite (Render)
-// Generated to run SQL Server locally and SQLite on Render (process.env.RENDER === 'true')
-
+// server.js - DUAL DB: SQL Server (local) + SQLite (producción)
 const express = require('express');
 const cors = require('cors');
 const sql = require('mssql');
@@ -10,8 +8,13 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-// Detect environment
-const USE_SQLITE = process.env.RENDER === 'true' || process.env.USE_SQLITE === 'true';
+const IS_PRODUCTION =
+  (process.env.NODE_ENV && process.env.NODE_ENV.toLowerCase() === 'production') ||
+  (process.env.RAILWAY && process.env.RAILWAY.toLowerCase().trim() === 'true');
+
+const USE_SQLITE =
+  IS_PRODUCTION ||
+  (process.env.USE_SQLITE && process.env.USE_SQLITE.toLowerCase().trim() === 'true');
 
 // ==================== CONFIGURACIÓN PUERTO ====================
 const PORT = process.env.PORT || 3000;
@@ -541,6 +544,6 @@ app.listen(PORT, () => {
   console.log('🚀 SERVIDOR MENTE SANA INICIADO (DUAL DB)');
   console.log(`📄 Página web: http://localhost:${PORT}`);
   console.log(`🔧 API Health: http://localhost:${PORT}/api/health`);
-  console.log(`🗄️ Usando DB: ${USE_SQLITE ? 'SQLite (Render / production)' : 'SQL Server (local)'}`);
+  console.log(`🗄️ Usando DB: ${USE_SQLITE ? 'SQLite ( RAILWAY/ production)' : 'SQL Server (local)'}`);
   console.log('══════════════════════════════════════');
 });
