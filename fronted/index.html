@@ -4514,50 +4514,50 @@ stat-card {
 
 
 // ==================== CONFIGURACIÓN API AUTO ====================
-
-// Detectar si estamos en Railway (producción)
-const isProduction = !(
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
-);
-
-// Seleccionar API automáticamente
-const API_BASE_URL = isProduction
-    ? "https://mindweb-production.up.railway.app"   // Railway
-    : "http://localhost:3000";                      // Local
-
-console.log("🔧 API BASE URL:", API_BASE_URL);
-
-// ---- Función genérica para peticiones a la API ----
-async function apiRequest(endpoint, options = {}) {
-    const url = `${API_BASE_URL}${endpoint}`;
-    const token = localStorage.getItem('authToken');
-
-    const config = {
-        method: options.method || 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        ...options
-    };
-
-    if (token) config.headers['Authorization'] = `Bearer ${token}`;
-    if (options.body) config.body = JSON.stringify(options.body);
-
-    console.log("🌐 API Request:", url);
-
-    const response = await fetch(url, config);
-
-    if (response.status === 401 || response.status === 403) {
-        logout();
-        throw new Error("Sesión expirada");
-    }
-
-    return await response.json().catch(() => null);
+// Detectar automáticamente si estamos en producción
+function getApiBaseUrl() {
+  // Si estamos en localhost, usa localhost
+  if (window.location.hostname === "localhost" || 
+      window.location.hostname === "127.0.0.1") {
+    return "http://localhost:3000";
+  }
+  
+  // Si estamos en Railway o producción - CAMBIA ESTA URL POR LA TUYA
+  return "https://mindweb-production.up.railway.app";
 }
 
-// Compatibilidad
-async function apiCall(a, b){ return apiRequest(a,b); }
+const API_BASE_URL = getApiBaseUrl();
+console.log("🔧 API BASE URL detectada:", API_BASE_URL);
 
+// Helper simple para obtener token (ajusta si usas otra clave)
+function _getToken() {
+  return localStorage.getItem('authToken') || localStorage.getItem('token') || null;
+}
 
+// Helper minimal API (detecta entorno automáticamente)
+async function apiFetch(path, options = {}) {
+  const token = _getToken();
+  const headers = Object.assign({}, options.headers || {}, {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  });
+  
+  // ✅ CORREGIDO: Usa API_BASE_URL dinámica
+  const resp = await fetch(`${API_BASE_URL}/api${path}`, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  let payload = null;
+  try { payload = await resp.json(); } catch(e) { payload = null; }
+  if (!resp.ok) {
+    const msg = payload?.error || payload?.message || `HTTP ${resp.status}`;
+    const err = new Error(msg);
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
+}
 
 // ==================== NAVEGACIÓN ENTRE SECCIONES ====================
 function showSection(section) {
@@ -4620,7 +4620,7 @@ async function login() {
     if (!email || !password) { alert('Por favor, completa todos los campos'); return; }
 
     try {
-        const data = await apiRequest('/api/auth/login', {
+        const data = await apiRequest('/auth/login', {
             method: 'POST',
             body: { email, password }
         });
@@ -4695,7 +4695,7 @@ async function register() {
     if (password !== confirm) { alert('Las contraseñas no coinciden'); return; }
 
     try {
-        const data = await apiRequest('/api/auth/register', {
+        const data = await apiRequest('/auth/register', {
             method: 'POST',
             body: { nombre: name, email: email, password: password }
         });
@@ -4746,7 +4746,7 @@ async function cargarDatosPerfil() {
         console.log("📥 Cargando perfil para idUsuario:", idUsuario);
 
         // Llamada al backend
-        const data = await apiRequest(`/api/perfil/completo?idUsuario=${idUsuario}`);
+        const data = await apiRequest(`/perfil/completo?idUsuario=${idUsuario}`);
         
         console.log("📥 Datos del perfil recibidos:", data);
 
@@ -4851,7 +4851,7 @@ async function cargarDatosPerfil() {
         // Llamada al backend con manejo de errores mejorado
         let data;
         try {
-            data = await apiRequest(`/api/perfil/completo?idUsuario=${idUsuario}`);
+            data = await apiRequest(`/perfil/completo?idUsuario=${idUsuario}`);
         } catch (apiError) {
             console.warn("⚠️ No se pudo cargar perfil desde API, usando datos locales:", apiError);
             // Si falla la API, usar datos del localStorage
@@ -5084,47 +5084,6 @@ function updateUserInfo() {
 
 
 
-
-// Función para hacer requests a la API
-async function apiRequest(endpoint, options = {}) {
-    const baseUrl = 'http://localhost:3000'; // Ajusta según tu backend
-    const url = baseUrl + endpoint;
-    
-    const config = {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
-        ...options
-    };
-    
-    if (config.body && typeof config.body === 'object') {
-        config.body = JSON.stringify(config.body);
-    }
-    
-    console.log(`🌐 Haciendo request a: ${url}`, config);
-    
-    try {
-        const response = await fetch(url, config);
-        
-        if (!response.ok) {
-            // Si el endpoint no existe
-            if (response.status === 404) {
-                throw new Error('Endpoint no encontrado');
-            }
-            throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        return data;
-        
-    } catch (error) {
-        console.error('❌ Error en apiRequest:', error);
-        throw error;
-    }
-}
-
 /* ---------- loadUserData ---------- */
 async function loadUserData() {
     try {
@@ -5148,42 +5107,11 @@ async function loadUserData() {
         emociones = [];
     }
 }
-
-
 /* ---------------------------
   inicio del codigo de emociones 
    --------------------------- */
 let emocion = [];            // <- usa este nombre exactamente
 let emocionSeleccionada = null;
-
-// Helper simple para obtener token (ajusta si usas otra clave)
-function _getToken() {
-  return localStorage.getItem('authToken') || localStorage.getItem('token') || null;
-}
-
-// Helper minimal API (usa tu server.js en localhost:3000)
-async function apiFetch(path, options = {}) {
-  const token = _getToken();
-  const headers = Object.assign({}, options.headers || {}, {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  });
-  const resp = await fetch(`http://localhost:3000/api${path}`, {
-    method: options.method || 'GET',
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  let payload = null;
-  try { payload = await resp.json(); } catch(e) { payload = null; }
-  if (!resp.ok) {
-    const msg = payload?.error || payload?.message || `HTTP ${resp.status}`;
-    const err = new Error(msg);
-    err.payload = payload;
-    throw err;
-  }
-  return payload;
-}
-
 /* ---------------------------
    Guardar emoción con confirmación visual
    --------------------------- */
@@ -5389,7 +5317,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // Para onclick en HTML
 function getEmocionSeleccionada() { return emocionSeleccionada; }
 
-
 // Paleta de colores
 const PALETA = {
     feliz: 'rgba(0,200,83,1)',
@@ -5402,6 +5329,9 @@ const PALETA = {
     agradecido: 'rgba(0,150,136,1)',
     neutral: 'rgba(158,158,158,1)'
 };
+
+// Variable global para emociones de gráficas
+let emociones = [];
 
 // ----------- HELPER: limpiar emociones al cambiar usuario -----------
 function limpiarEmocionesGraficas() {
@@ -5419,17 +5349,8 @@ async function cargarEmocionesGraficas() {
     }
 
     try {
-        const resp = await fetch("http://localhost:3000/api/emociones/usuario", {
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-
-        if (!resp.ok) {
-            console.error("Error al cargar emociones del usuario:", await resp.text());
-            limpiarEmocionesGraficas();
-            return;
-        }
-
-        const data = await resp.json();
+        // ✅ CORREGIDO: Usa apiFetch en lugar de fetch directo
+        const data = await apiFetch('/emociones/usuario');
 
         // Si el usuario no tiene emociones → limpia
         if (!Array.isArray(data) || data.length === 0) {
