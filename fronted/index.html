@@ -4921,106 +4921,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-/* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
-async function cargarDatosPerfil() {
-    try {
-        // Asegurarnos de tener el idUsuario
-        const idUsuario = initializeUserId();
-        
-        if (!idUsuario) {
-            console.warn("❌ No hay idUsuario en localStorage - no se puede cargar perfil");
-            return;
-        }
-
-        console.log("📥 Cargando perfil para idUsuario:", idUsuario);
-
-        // Llamada al backend
-        const data = await apiRequest(`/perfil/completo?idUsuario=${idUsuario}`);
-        
-        console.log("📥 Datos del perfil recibidos:", data);
-
-        // Rellenar formulario
-        document.getElementById('perfil-nombre').value = data.NombreCompleto || '';
-        document.getElementById('perfil-email').value = data.CorreoElectronico || '';
-        
-        // Formatear fecha correctamente
-        if (data.FechaDeNacimiento) {
-            const fecha = new Date(data.FechaDeNacimiento);
-            document.getElementById('perfil-fecha-nacimiento').value = fecha.toISOString().split('T')[0];
-        } else {
-            document.getElementById('perfil-fecha-nacimiento').value = '';
-        }
-        
-        document.getElementById('perfil-genero').value = data.Genero || '';
-        document.getElementById('perfil-bio').value = data.Biografia || '';
-
-        // Actualizar cabecera del perfil
-        updateUserInfo();
-        
-        // Formatear fecha de registro
-        if (data.MiembroDesde) {
-            const fechaRegistro = new Date(data.MiembroDesde);
-            document.getElementById('fecha-registro').textContent = fechaRegistro.getFullYear();
-        } else {
-            document.getElementById('fecha-registro').textContent = new Date().getFullYear();
-        }
-
-        setupUserAvatar();
-        updateProfileStats();
-        
-        console.log("✅ Perfil cargado exitosamente");
-
-    } catch (err) {
-        console.error('❌ Error al cargar perfil:', err);
-    }
-}
-
-/* 👤---------- Guardar Perfil en la API ---------- 👤*/
-async function guardarPerfil() {
-    try {
-        const idUsuario = localStorage.getItem('idUsuario');
-        if (!idUsuario) {
-            alert('Error: No se encontró el ID de usuario');
-            return;
-        }
-
-        const body = {
-            idUsuario: parseInt(idUsuario),
-            nombreCompleto: document.getElementById('perfil-nombre').value,
-            correoElectronico: document.getElementById('perfil-email').value,
-            fechaDeNacimiento: document.getElementById('perfil-fecha-nacimiento').value,
-            genero: document.getElementById('perfil-genero').value,
-            biografia: document.getElementById('perfil-bio').value,
-            contrasenaActual: document.getElementById('perfil-password-actual').value,
-            nuevaContrasena: document.getElementById('perfil-password-nueva').value,
-            confirmarNuevaContrasena: document.getElementById('perfil-password-confirmar').value
-        };
-
-        console.log("📤 Enviando datos:", body); // Para debug
-
-        const result = await apiRequest('/perfil/guardar', {
-            method: 'POST',
-            body: body
-        });
-
-        // Limpiar campos de contraseña
-        document.getElementById('perfil-password-actual').value = '';
-        document.getElementById('perfil-password-nueva').value = '';
-        document.getElementById('perfil-password-confirmar').value = '';
-
-        // Actualizar la información en la UI
-        updateUserInfo();
-        setupUserAvatar();
-        
-        alert("Perfil actualizado correctamente ✔");
-        
-    } catch (err) {
-        console.error('Error al guardar perfil:', err);
-        alert('Error al guardar perfil: ' + err.message);
-    }
-}
-
-/* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
+// ==================== CARGAR PERFIL DESDE LA API (SQLite) ====================
 async function cargarDatosPerfil() {
     try {
         // Asegurarnos de tener el idUsuario
@@ -5037,12 +4938,12 @@ async function cargarDatosPerfil() {
 
         console.log("📥 Cargando perfil para idUsuario:", idUsuario);
 
-        // Llamada al backend con manejo de errores mejorado
+        // Llamada al backend SQLite - SIN /api/ en la ruta
         let data;
         try {
             data = await apiRequest(`/perfil/completo?idUsuario=${idUsuario}`);
         } catch (apiError) {
-            console.warn("⚠️ No se pudo cargar perfil desde API, usando datos locales:", apiError);
+            console.warn("⚠️ No se pudo cargar perfil desde SQLite, usando datos locales:", apiError);
             // Si falla la API, usar datos del localStorage
             updateUserInfo();
             setupUserAvatar();
@@ -5052,48 +4953,52 @@ async function cargarDatosPerfil() {
         
         console.log("📥 Datos del perfil recibidos:", data);
 
-        // Rellenar formulario
-        if (document.getElementById('perfil-nombre')) {
-            document.getElementById('perfil-nombre').value = data.NombreCompleto || '';
-        }
-        if (document.getElementById('perfil-email')) {
-            document.getElementById('perfil-email').value = data.CorreoElectronico || '';
-        }
+        // Rellenar formulario si los elementos existen
+        const perfilNombre = document.getElementById('perfil-nombre');
+        const perfilEmail = document.getElementById('perfil-email');
+        const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
+        const perfilGenero = document.getElementById('perfil-genero');
+        const perfilBio = document.getElementById('perfil-bio');
+        
+        if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
+        if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
         
         // Formatear fecha correctamente
-        if (document.getElementById('perfil-fecha-nacimiento')) {
-            if (data.FechaDeNacimiento) {
-                const fecha = new Date(data.FechaDeNacimiento);
-                document.getElementById('perfil-fecha-nacimiento').value = fecha.toISOString().split('T')[0];
-            } else {
-                document.getElementById('perfil-fecha-nacimiento').value = '';
-            }
+        if (perfilFecha && data.FechaDeNacimiento) {
+            const fecha = new Date(data.FechaDeNacimiento);
+            perfilFecha.value = fecha.toISOString().split('T')[0];
         }
         
-        if (document.getElementById('perfil-genero')) {
-            document.getElementById('perfil-genero').value = data.Genero || '';
+        if (perfilGenero) perfilGenero.value = data.Genero || '';
+        if (perfilBio) perfilBio.value = data.Biografia || '';
+
+        // Guardar datos en localStorage para usar después
+        if (data.NombreCompleto) {
+            localStorage.setItem('userName', data.NombreCompleto);
         }
-        if (document.getElementById('perfil-bio')) {
-            document.getElementById('perfil-bio').value = data.Biografia || '';
+        if (data.CorreoElectronico) {
+            localStorage.setItem('userEmail', data.CorreoElectronico);
         }
 
         // Actualizar cabecera del perfil
         updateUserInfo();
+        setupUserAvatar();
         
-        // Formatear fecha de registro
-        if (document.getElementById('fecha-registro')) {
+        // Formatear fecha de registro si existe el elemento
+        const fechaRegistroElem = document.getElementById('fecha-registro');
+        if (fechaRegistroElem) {
             if (data.MiembroDesde) {
                 const fechaRegistro = new Date(data.MiembroDesde);
-                document.getElementById('fecha-registro').textContent = fechaRegistro.getFullYear();
+                fechaRegistroElem.textContent = fechaRegistro.getFullYear();
             } else {
-                document.getElementById('fecha-registro').textContent = new Date().getFullYear();
+                fechaRegistroElem.textContent = new Date().getFullYear();
             }
         }
 
-        setupUserAvatar();
-        updateProfileStats();
+        // Intentar cargar estadísticas desde el endpoint
+        await cargarEstadisticasPerfil();
         
-        console.log("✅ Perfil cargado exitosamente");
+        console.log("✅ Perfil cargado exitosamente desde SQLite");
 
     } catch (err) {
         console.error('❌ Error al cargar perfil:', err);
@@ -5104,174 +5009,136 @@ async function cargarDatosPerfil() {
     }
 }
 
-// ==================== ACTUALIZAR INFORMACIÓN DEL USUARIO ====================
-function updateUserInfo() {
+// ==================== GUARDAR PERFIL EN SQLite ====================
+async function guardarPerfil() {
     try {
-        const user = JSON.parse(localStorage.getItem("user") || "{}");
-        const userName = localStorage.getItem("userName");
-        const userEmail = localStorage.getItem("userEmail");
-        
-        // Usar los valores disponibles (de localStorage o del objeto user)
-        const nombre = userName || user.nombre || user.Nombre || user.NombreCompleto || "Usuario";
-        const correo = userEmail || user.email || user.Correo || user.CorreoElectronico || "correo@ejemplo.com";
-
-        // Actualizar en la cabecera del perfil
-        const nombreLabel = document.getElementById("nombre-usuario");
-        const emailLabel = document.getElementById("email-usuario");
-
-        if (nombreLabel) nombreLabel.textContent = nombre;
-        if (emailLabel) emailLabel.textContent = correo;
-
-        console.log("✅ Información de usuario actualizada:", { nombre, correo });
-        
-    } catch (error) {
-        console.error("❌ Error en updateUserInfo:", error);
-    }
-}
-// ==================== INICIALIZAR ID USUARIO ====================
-function initializeUserId() {
-    try {
-        let idUsuario = localStorage.getItem('idUsuario');
-        
+        const idUsuario = localStorage.getItem('idUsuario');
         if (!idUsuario) {
-            const user = JSON.parse(localStorage.getItem("user") || "{}");
-            idUsuario = user.IdUsuario || user.idUsuario;
-            
-            if (idUsuario) {
-                localStorage.setItem('idUsuario', idUsuario);
-                console.log("✅ idUsuario inicializado:", idUsuario);
-            } else {
-                console.warn("⚠️ No se pudo obtener idUsuario");
+            alert('Error: No se encontró el ID de usuario');
+            return;
+        }
+
+        const body = {
+            idUsuario: parseInt(idUsuario),
+            nombreCompleto: document.getElementById('perfil-nombre').value,
+            correoElectronico: document.getElementById('perfil-email').value,
+            fechaDeNacimiento: document.getElementById('perfil-fecha-nacimiento').value,
+            genero: document.getElementById('perfil-genero').value,
+            biografia: document.getElementById('perfil-bio').value
+        };
+
+        // Solo incluir campos de contraseña si están completos
+        const contrasenaActual = document.getElementById('perfil-password-actual').value;
+        const nuevaContrasena = document.getElementById('perfil-password-nueva').value;
+        const confirmarNuevaContrasena = document.getElementById('perfil-password-confirmar').value;
+        
+        if (contrasenaActual || nuevaContrasena || confirmarNuevaContrasena) {
+            body.contrasenaActual = contrasenaActual;
+            body.nuevaContrasena = nuevaContrasena;
+            body.confirmarNuevaContrasena = confirmarNuevaContrasena;
+        }
+
+        console.log("📤 Enviando datos a SQLite:", body);
+
+        // Llamada al backend SQLite - SIN /api/ en la ruta
+        const result = await apiRequest('/perfil/guardar', {
+            method: 'POST',
+            body: body
+        });
+
+        // Limpiar campos de contraseña
+        document.getElementById('perfil-password-actual').value = '';
+        document.getElementById('perfil-password-nueva').value = '';
+        document.getElementById('perfil-password-confirmar').value = '';
+
+        // Guardar en localStorage para uso inmediato
+        localStorage.setItem('userName', body.nombreCompleto);
+        localStorage.setItem('userEmail', body.correoElectronico);
+
+        // Actualizar la información en la UI
+        updateUserInfo();
+        setupUserAvatar();
+        
+        alert("✅ Perfil actualizado correctamente en SQLite");
+        
+    } catch (err) {
+        console.error('Error al guardar perfil:', err);
+        alert('❌ Error al guardar perfil: ' + (err.message || 'Error desconocido'));
+    }
+}
+
+// ==================== CARGAR ESTADÍSTICAS DESDE SQLite ====================
+async function cargarEstadisticasPerfil() {
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            console.warn("No hay token, no se pueden cargar estadísticas");
+            return;
+        }
+
+        // Llamada al endpoint de estadísticas - SIN /api/ en la ruta
+        const data = await apiRequest('/estadisticas/generales', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
             }
+        });
+
+        console.log("📊 Estadísticas recibidas:", data);
+
+        // Guardar estadísticas en localStorage
+        localStorage.setItem('emocionesRegistradas', data.emocionesRegistradas || 0);
+        localStorage.setItem('ejerciciosRealizados', data.ejerciciosRealizados || 0);
+        localStorage.setItem('retosCompletados', data.retosCompletados || 0);
+        localStorage.setItem('diasConsecutivos', data.diasConsecutivos || 0);
+
+        // Actualizar UI
+        updateProfileStats();
+
+    } catch (error) {
+        console.warn("⚠️ No se pudieron cargar estadísticas:", error);
+        // Usar valores por defecto
+        updateProfileStats();
+    }
+}
+
+// ==================== FUNCION apiRequest CORREGIDA ====================
+// Asegúrate de que esta función no añada /api/ automáticamente
+async function apiRequest(endpoint, options = {}) {
+    const baseUrl = ''; // Vacío para rutas relativas
+    const url = baseUrl + endpoint;
+    
+    const defaultOptions = {
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
         }
-        
-        return idUsuario;
-    } catch (error) {
-        console.error("❌ Error en initializeUserId:", error);
-        return null;
-    }
-}
+    };
 
-// ==================== FUNCIONES AUXILIARES ====================
-
-// Función para generar color aleatorio para el avatar
-function getRandomColor() {
-    const colors = [
-        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
-        '#F8C471', '#82E0AA', '#F1948A', '#85C1E9', '#D7BDE2'
-    ];
-    return colors[Math.floor(Math.random() * colors.length)];
-}
-
-// Configurar avatar del usuario
-function setupUserAvatar() {
-    try {
-        const userName = document.getElementById('nombre-usuario')?.textContent || 
-                        localStorage.getItem('userName') || 
-                        'U';
-        const avatarElement = document.getElementById('avatar-usuario');
-
-        if (avatarElement && userName) {
-            const initials = userName.split(' ')
-                .map(n => n[0] || '')
-                .join('')
-                .toUpperCase()
-                .substring(0, 2); // Máximo 2 iniciales
-
-            avatarElement.innerHTML = initials;
-            avatarElement.style.backgroundColor = getRandomColor();
-            avatarElement.style.display = 'flex';
-            avatarElement.style.alignItems = 'center';
-            avatarElement.style.justifyContent = 'center';
-            avatarElement.style.color = 'white';
-            avatarElement.style.fontWeight = 'bold';
-            avatarElement.style.borderRadius = '50%';
-            
-            console.log("✅ Avatar configurado para:", userName, "Iniciales:", initials);
+    const config = {
+        ...defaultOptions,
+        ...options,
+        headers: {
+            ...defaultOptions.headers,
+            ...options.headers
         }
-    } catch (error) {
-        console.error("❌ Error en setupUserAvatar:", error);
+    };
+
+    if (config.body && typeof config.body === 'object') {
+        config.body = JSON.stringify(config.body);
     }
-}
 
-// Actualizar estadísticas del perfil
-function updateProfileStats() {
-    try {
-        // Usar valores por defecto por ahora
-        const emocionesCount = 0;
-        const retosCompletados = 0;
-        const ejerciciosRealizados = parseInt(localStorage.getItem('ejerciciosRealizados') || '0');
-        const diasConsecutivos = parseInt(localStorage.getItem('diasConsecutivos') || '0');
+    console.log(`🌐 Llamando a: ${url}`, config);
 
-        // Actualizar la UI
-        const emocionesElem = document.getElementById('emociones-registradas');
-        const retosElem = document.getElementById('retos-completados');
-        const ejerciciosElem = document.getElementById('ejercicios-realizados');
-        const diasElem = document.getElementById('dias-consecutivos-perfil');
-
-        if (emocionesElem) emocionesElem.textContent = emocionesCount;
-        if (retosElem) retosElem.textContent = retosCompletados;
-        if (ejerciciosElem) ejerciciosElem.textContent = ejerciciosRealizados;
-        if (diasElem) diasElem.textContent = diasConsecutivos;
-
-        console.log("✅ Estadísticas actualizadas");
-    } catch (error) {
-        console.error("❌ Error en updateProfileStats:", error);
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error ${response.status}: ${errorText}`);
     }
+
+    return await response.json();
 }
-
-// Inicializar ID de usuario
-function initializeUserId() {
-    try {
-        let idUsuario = localStorage.getItem('idUsuario');
-        
-        if (!idUsuario) {
-            const user = JSON.parse(localStorage.getItem("user") || "{}");
-            idUsuario = user.IdUsuario || user.idUsuario;
-            
-            if (idUsuario) {
-                localStorage.setItem('idUsuario', idUsuario);
-                console.log("✅ idUsuario inicializado:", idUsuario);
-            } else {
-                console.warn("⚠️ No se pudo obtener idUsuario");
-                return null;
-            }
-        }
-        
-        return idUsuario;
-    } catch (error) {
-        console.error("❌ Error en initializeUserId:", error);
-        return null;
-    }
-}
-
-// Actualizar información del usuario en la UI
-function updateUserInfo() {
-    try {
-        const user = JSON.parse(localStorage.getItem("user") || "{}");
-        const userName = localStorage.getItem("userName");
-        const userEmail = localStorage.getItem("userEmail");
-        
-        // Usar los valores disponibles
-        const nombre = userName || user.nombre || user.Nombre || user.NombreCompleto || "Usuario";
-        const correo = userEmail || user.email || user.Correo || user.CorreoElectronico || "correo@ejemplo.com";
-
-        // Actualizar en la cabecera del perfil
-        const nombreLabel = document.getElementById("nombre-usuario");
-        const emailLabel = document.getElementById("email-usuario");
-
-        if (nombreLabel) nombreLabel.textContent = nombre;
-        if (emailLabel) emailLabel.textContent = correo;
-
-        console.log("✅ Información de usuario actualizada:", { nombre, correo });
-        
-    } catch (error) {
-        console.error("❌ Error en updateUserInfo:", error);
-    }
-}
-
-
 
 /* ---------- loadUserData ---------- */
 async function loadUserData() {
