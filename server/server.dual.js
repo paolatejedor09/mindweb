@@ -103,6 +103,191 @@ if (USE_SQLITE) initSqlite();
 else connectSqlServer();
 
 // ------------------------------------------------------
+//  INICIALIZAR TODAS LAS TABLAS SQLITE
+// ------------------------------------------------------
+async function inicializarTablasSQLite() {
+  if (!USE_SQLITE || !sqlite) {
+    console.log("ℹ️ SQLite no está activo, saltando inicialización de tablas");
+    return;
+  }
+  
+  console.log("📋 INICIALIZANDO TABLAS SQLITE...");
+  
+  try {
+    // 1. Tabla Usuarios
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Usuarios (
+        IdUsuario INTEGER PRIMARY KEY AUTOINCREMENT,
+        Nombre TEXT,
+        Correo TEXT UNIQUE,
+        Contrasena TEXT,
+        Nivel INTEGER DEFAULT 1,
+        Puntos INTEGER DEFAULT 0,
+        FechaRegistro TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    console.log("✅ Tabla 'Usuarios' lista");
+    
+    // 2. Tabla Perfil
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Perfil (
+        IdPerfil INTEGER PRIMARY KEY AUTOINCREMENT,
+        IdUsuario INTEGER,
+        NombreCompleto TEXT,
+        CorreoElectronico TEXT,
+        FechaDeNacimiento TEXT,
+        Genero TEXT,
+        Biografia TEXT
+      )
+    `);
+    console.log("✅ Tabla 'Perfil' lista");
+    
+    // 3. Tabla Emociones (DATOS BASE)
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Emociones (
+        IdEmocion INTEGER PRIMARY KEY,
+        Nombre TEXT,
+        Color TEXT,
+        Icono TEXT
+      )
+    `);
+    console.log("✅ Tabla 'Emociones' lista");
+    
+    // Insertar emociones base si la tabla está vacía
+    const countEmociones = await sqliteGet('SELECT COUNT(*) as total FROM Emociones');
+    if (countEmociones.total === 0) {
+      console.log("📝 Insertando emociones base...");
+      await sqliteRun(`
+        INSERT INTO Emociones (IdEmocion, Nombre, Color, Icono) VALUES 
+        (1, 'Feliz', '#FFD700', '😊'),
+        (2, 'Triste', '#3498DB', '😢'),
+        (3, 'Enojado', '#E74C3C', '😠'),
+        (4, 'Ansioso', '#9B59B6', '😰'),
+        (5, 'Relajado', '#2ECC71', '😌'),
+        (6, 'Cansado', '#95A5A6', '😴'),
+        (7, 'Energico', '#FF9800', '😄'),
+        (8, 'Confundido', '#795548', '😕'),
+        (9, 'Agradecido', '#009688', '🙏'),
+        (10, 'Calmado', '#8E24AA', '😌')
+      `);
+      console.log("✅ Emociones base insertadas");
+    }
+    
+    // 4. Tabla RegistroEmocional
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS RegistroEmocional (
+        IdRegistro INTEGER PRIMARY KEY AUTOINCREMENT,
+        IdUsuario INTEGER,
+        IdEmocion INTEGER,
+        Nota TEXT,
+        FechaRegistro TEXT DEFAULT (datetime('now'))
+      )
+    `);
+    console.log("✅ Tabla 'RegistroEmocional' lista");
+    
+    // 5. Tabla Ejercicios
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Ejercicios (
+        IdEjercicio INTEGER PRIMARY KEY,
+        Nombre TEXT
+      )
+    `);
+    console.log("✅ Tabla 'Ejercicios' lista");
+    
+    // Insertar ejercicios base
+    const countEjercicios = await sqliteGet('SELECT COUNT(*) as total FROM Ejercicios');
+    if (countEjercicios.total === 0) {
+      await sqliteRun(`
+        INSERT INTO Ejercicios (IdEjercicio, Nombre) VALUES 
+        (1, 'Respiración'),
+        (2, 'Meditación'),
+        (3, 'Ejercicio Físico'),
+        (4, 'Gratitud')
+      `);
+      console.log("✅ Ejercicios base insertados");
+    }
+    
+    // 6. Tabla SesionesEjercicio
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS SesionesEjercicio (
+        IdSesion INTEGER PRIMARY KEY AUTOINCREMENT,
+        IdUsuario INTEGER,
+        IdEjercicio INTEGER,
+        FechaSesion TEXT DEFAULT (datetime('now')),
+        Completado INTEGER DEFAULT 0,
+        RespuestaGratitud TEXT
+      )
+    `);
+    console.log("✅ Tabla 'SesionesEjercicio' lista");
+    
+    // 7. Tabla Retos
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Retos (
+        IdReto INTEGER PRIMARY KEY AUTOINCREMENT,
+        IdUsuario INTEGER,
+        Titulo TEXT,
+        Estado TEXT DEFAULT 'Pendiente',
+        FechaCreacion TEXT DEFAULT (datetime('now')),
+        FechaCumplido TEXT
+      )
+    `);
+    console.log("✅ Tabla 'Retos' lista");
+    
+    // 8. Tabla Mascotas (VERSIÓN CORREGIDA)
+await sqliteRun(`
+  CREATE TABLE IF NOT EXISTS Mascotas (
+    IdMascota INTEGER PRIMARY KEY AUTOINCREMENT,
+    Nombre TEXT,
+    Tipo TEXT,
+    Imagen TEXT
+  )
+`);
+console.log("✅ Tabla 'Mascotas' lista");
+
+// Insertar mascotas base (VERSIÓN CORREGIDA)
+const countMascotas = await sqliteGet('SELECT COUNT(*) as total FROM Mascotas');
+if (countMascotas.total === 0) {
+  await sqliteRun(`
+    INSERT INTO Mascotas (Nombre, Tipo, Imagen) VALUES 
+    ('Axolote', 'axolote', 'imagvideos/axolo.png'),
+    ('Caracol', 'caracol', 'imagvideos/caracoli.png'),
+    ('Dinosaurio', 'dinosaurio', 'imagvideos/dinosau.png')
+  `);
+  console.log("✅ Mascotas base insertadas (axolote, caracol, dinosaurio)");
+}
+    
+    // 9. Tabla UsuarioMascota (VERSIÓN CORREGIDA)
+await sqliteRun(`
+  CREATE TABLE IF NOT EXISTS UsuarioMascota (
+    IdUsuarioMascota INTEGER PRIMARY KEY AUTOINCREMENT,
+    IdUsuario INTEGER,
+    IdMascota INTEGER,
+    Tipo TEXT,
+    FechaAdopcion TEXT DEFAULT (datetime('now')),
+    Activa INTEGER DEFAULT 0,
+    Nivel INTEGER DEFAULT 1,
+    Experiencia INTEGER DEFAULT 0,
+    ExperienciaNecesaria INTEGER DEFAULT 100,
+    Felicidad INTEGER DEFAULT 100,
+    Energia INTEGER DEFAULT 100,
+    Hambre INTEGER DEFAULT 0,
+    Monedas INTEGER DEFAULT 50,
+    Estado TEXT DEFAULT 'Feliz'
+  )
+`);
+console.log("✅ Tabla 'UsuarioMascota' lista");
+   
+    
+    console.log("🎉 TODAS LAS TABLAS SQLITE INICIALIZADAS CORRECTAMENTE");
+    
+  } catch (error) {
+    console.error("❌ ERROR inicializando tablas SQLite:");
+    console.error("❌ Mensaje:", error.message);
+    console.error("❌ Stack:", error.stack);
+  }
+}
+
+// ------------------------------------------------------
 //  HELPERS SQLITE / SQL SERVER
 // ------------------------------------------------------
 function sqlRequestFromParams(params = {}) {
