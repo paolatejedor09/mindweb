@@ -4513,84 +4513,41 @@ stat-card {
 }
 
 
-// ==================== CONFIGURACIÓN API ==================== 
-// Detecta si estás en local o producción
-const API_BASE_URL = window.location.hostname === "localhost"
-  ? "http://localhost:3000"   // tu backend local
-  : window.location.origin;   // Render u otro dominio en producción
+/// ==================== CONFIGURACIÓN API AUTO ==================== 
+const API_BASE_URL =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+        ? "http://localhost:3000"   // local
+        : "https://mindweb-production.up.railway.app"; // tu dominio Railway
 
-let mesActual = new Date().getMonth();
-let añoActual = new Date().getFullYear();
-const hoyString = new Date().toISOString().slice(0,10); // YYYY-MM-DD
-let emociones = []; // cargadas desde BD
-
-// ---------- Función genérica para peticiones a la API ----------
 async function apiRequest(endpoint, options = {}) {
-
-    // Detectar si estás en Render
-    const isRender = window.location.hostname.includes("onrender.com");
-
-    // Cambiar automáticamente entre local y Render
-    const API_BASE_URL = isRender
-        ? "https://mindweb.onrender.com"  // Tu backend en Render
-        : "http://localhost:3000";        // Localhost
-
     const url = `${API_BASE_URL}${endpoint}`;
     const token = localStorage.getItem('authToken');
 
     const config = {
         method: options.method || 'GET',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         ...options
     };
 
-    if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
+    if (token) config.headers['Authorization'] = `Bearer ${token}`;
+
+    if (options.body) config.body = JSON.stringify(options.body);
+
+    console.log("🌐 API Request:", url);
+
+    const response = await fetch(url, config);
+
+    if (response.status === 401 || response.status === 403) {
+        logout();
+        throw new Error("Sesión expirada");
     }
 
-    if (options.body && typeof options.body === 'object') {
-        config.body = JSON.stringify(options.body);
-    }
-
-    console.log("🌐 API Request →", url, config);
-
-    try {
-        const response = await fetch(url, config);
-
-        // Sesión inválida → forzar logout
-        if (response.status === 401 || response.status === 403) {
-            logout();
-            throw new Error("Sesión expirada o no autorizada.");
-        }
-
-        let data = null;
-        try {
-            data = await response.json();
-        } catch (e) {
-            console.warn("⚠ Respuesta no JSON:", e);
-        }
-
-        if (!response.ok) {
-            const msg = data?.error || data?.message || `Error ${response.status}`;
-            throw new Error(msg);
-        }
-
-        return data;
-
-    } catch (err) {
-        console.error("🔥 apiRequest ERROR:", err);
-        throw err;
-    }
+    return await response.json().catch(() => null);
 }
 
-// ===============================================
-// Compatibilidad antigua: apiCall = apiRequest
-// ===============================================
-async function apiCall(endpoint, options = {}) {
-    return apiRequest(endpoint, options);
-}
+// Compatibilidad
+async function apiCall(a, b){ return apiRequest(a,b); }
 
 
 // ==================== NAVEGACIÓN ENTRE SECCIONES ====================
@@ -6618,7 +6575,7 @@ const mascotaMedia = {
         comiendo: 'imagvideos/caracolcomiendo.gif',
         acariciando: 'imagvideos/caracolacariciando.gif',
         descansando: 'imagvideos/caracoldurmiendo.gif',
-        feliz: 'imagvideos/caracol-feliz.gif',
+        feliz: 'imagvideos/caracol-feliz.gif',                                                                                                                                                                                                                                                                                                                                                                            
         // 🔥 NUEVO: Video de subida de nivel
         subidaNivel: 'imagvideos/caracolnivel.mp4',
         jugando: {
