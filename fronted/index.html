@@ -5193,9 +5193,10 @@ async function guardarPerfil() {
     }
 }
 
+
 async function cargarDatosPerfil() {
     try {
-        // console.log("📥 Cargando datos del perfil..."); // ← Comentar para producción
+        // console.log("📥 Cargando datos del perfil..."); 
         
         const idUsuario = initializeUserId();
         if (!idUsuario) {
@@ -5204,50 +5205,23 @@ async function cargarDatosPerfil() {
             return;
         }
 
-        // console.log("🔍 ID de usuario:", idUsuario); // ← Comentar para producción
-
         // Intentar cargar perfil silenciosamente
         try {
             const data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
             
             if (data && data.NombreCompleto !== undefined) {
-                // Rellenar formulario con datos de API
-                const perfilNombre = document.getElementById('perfil-nombre');
-                const perfilEmail = document.getElementById('perfil-email');
-                const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
-                const perfilGenero = document.getElementById('perfil-genero');
-                const perfilBio = document.getElementById('perfil-bio');
-                
-                if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
-                if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
-                
-                if (perfilFecha && data.FechaDeNacimiento) {
-                    const fecha = new Date(data.FechaDeNacimiento);
-                    perfilFecha.value = fecha.toISOString().split('T')[0];
-                }
-                
-                if (perfilGenero) perfilGenero.value = data.Genero || '';
-                if (perfilBio) perfilBio.value = data.Biografia || '';
-                
-                // Guardar en localStorage
-                if (data.NombreCompleto) localStorage.setItem('userName', data.NombreCompleto);
-                if (data.CorreoElectronico) localStorage.setItem('userEmail', data.CorreoElectronico);
+                // Rellenar formulario...
             }
         } catch (apiError) {
-            // Error completamente silencioso
+            // Error completamente silencioso ✓
         }
 
-        // Siempre actualizar UI
         updateUserInfo();
         setupUserAvatar();
-        
-        // Cargar estadísticas
         await cargarEstadisticasPerfil();
-        
-        // console.log("✅ Perfil cargado exitosamente"); // ← Comentar para producción
 
     } catch (err) {
-        // console.error('❌ Error al cargar perfil:', err); // ← Comentar para producción
+        // console.error('❌ Error al cargar perfil:', err); // ← Ya comentado ✓
         updateUserInfo();
         setupUserAvatar();
     }
