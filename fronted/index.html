@@ -4483,36 +4483,7 @@ stat-card {
 <head>
     
     <script>
-   // 🔥 SILENCIADOR DE ERRORES - AGREGA ESTO AL PRINCIPIO DE TU ARCHIVO JS
-(function() {
-    const originalError = console.error;
-    console.error = function(...args) {
-        // Silencia solo errores de endpoints y passwords
-        if (args[0] && (
-            args[0].includes('Endpoint no encontrado') ||
-            args[0].includes('Password field is not contained in a form') ||
-            args[0].includes('404') ||
-            args[0].includes('loadUserData')
-        )) {
-            return; // No mostrar estos errores
-        }
-        originalError.apply(console, args);
-    };
-})();
-   function mostrarPantalla(idPantalla) {
-    // Ocultar todas las pantallas
-    document.querySelectorAll('.welcome-container, .auth-screen-container, #main-app').forEach(p => {
-        p.classList.add('hidden');
-    });
-    
-    // Mostrar la pantalla que quieres
-    const pantalla = document.getElementById(idPantalla);
-    if (pantalla) {
-        pantalla.classList.remove('hidden');
-    }
-}
-
-
+   
 // ==================== CONFIGURACIÓN API AUTO ====================
 // Detectar automáticamente si estamos en producción
 function getApiBaseUrl() {
@@ -4617,9 +4588,24 @@ window.addEventListener('load', async function() {
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    if (!email || !password) { alert('Por favor, completa todos los campos'); return; }
+    
+    // Validación mejorada
+    if (!email || !password) { 
+        alert('Por favor, completa todos los campos'); 
+        return; 
+    }
+
+    // Mostrar indicador de carga
+    const loginBtn = document.querySelector('#login-screen button[onclick="login()"]');
+    const originalText = loginBtn?.textContent || 'Iniciar Sesión';
+    if (loginBtn) {
+        loginBtn.textContent = 'Iniciando sesión...';
+        loginBtn.disabled = true;
+    }
 
     try {
+        console.log("🔐 Intentando login con:", { email });
+        
         const data = await apiRequest('/auth/login', {
             method: 'POST',
             body: { email, password }
@@ -4630,30 +4616,50 @@ async function login() {
         // Guardar token
         localStorage.setItem('authToken', data.token);
 
-        // Guardar info del usuario
+        // Guardar info del usuario - CORREGIDO para SQLite
         localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
-        localStorage.setItem('userEmail', data.user.email || data.user.Correo || '');
-        localStorage.setItem('userAvatar', data.user.avatar || data.user.Avatar || 'default');
+        
+        // 🔥 CORREGIDO: Usar las propiedades correctas (SQLite usa mayúsculas)
+        const userName = data.user.Nombre || data.user.nombre || '';
+        const userEmail = data.user.Correo || data.user.email || '';
+        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
+        
+        localStorage.setItem('userName', userName);
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 Asegurar que el idUsuario se guarda correctamente
+        // 🔥 CORREGIDO: Asegurar que el idUsuario se guarda correctamente
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
-            localStorage.setItem('idUsuario', idUsuario);
+            localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado:", idUsuario);
         } else {
             console.warn("⚠️ No se recibió idUsuario del servidor");
+            // Intentar extraer del token JWT como respaldo
+            try {
+                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
+                if (tokenPayload.userId) {
+                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
+                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
+                }
+            } catch (tokenErr) {
+                console.error("❌ Error parseando token:", tokenErr);
+            }
         }
 
-        // Mascota
-        localStorage.setItem("mascota_idUsuario", idUsuario);
-        if (typeof mascota !== "undefined") {
-            mascota.idUsuario = idUsuario;
+        // Mascota - solo si tenemos idUsuario
+        if (idUsuario) {
+            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
+            if (typeof mascota !== "undefined") {
+                mascota.idUsuario = idUsuario;
+            }
         }
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
+        
+        // Cargar datos del usuario
         await loadUserData();
 
         // Cargar perfil
@@ -4665,13 +4671,50 @@ async function login() {
             setTimeout(() => forzarActualizacionMascota(), 500);
         }
 
+        // Mostrar mensaje de bienvenida
+        setTimeout(() => {
+            const welcomeMsg = document.getElementById('welcome-message');
+            if (welcomeMsg) {
+                welcomeMsg.textContent = `¡Bienvenido/a de nuevo, ${userName || email}!`;
+                welcomeMsg.style.display = 'block';
+                setTimeout(() => {
+                    welcomeMsg.style.display = 'none';
+                }, 3000);
+            }
+        }, 100);
+
     } catch (err) {
-        alert('Error: ' + err.message);
+        console.error('❌ Error en login:', err);
+        
+        // Mensaje de error más descriptivo
+        let errorMsg = 'Error al iniciar sesión';
+        if (err.message.includes('no encontrado') || err.message.includes('404')) {
+            errorMsg = 'Usuario no encontrado. Verifica tu correo o regístrate.';
+        } else if (err.message.includes('contraseña') || err.message.includes('401')) {
+            errorMsg = 'Contraseña incorrecta. Intenta nuevamente.';
+        } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
+            errorMsg = 'Error de conexión. Verifica tu internet o intenta más tarde.';
+        } else {
+            errorMsg = 'Error: ' + err.message;
+        }
+        
+        alert(errorMsg);
+        
+    } finally {
+        // Restaurar botón
+        if (loginBtn) {
+            loginBtn.textContent = originalText;
+            loginBtn.disabled = false;
+        }
     }
 }
 
-
 function logout() {
+    // Confirmar antes de cerrar sesión
+    if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+        return;
+    }
+    
     // Limpiar session
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
@@ -4680,10 +4723,23 @@ function logout() {
     localStorage.removeItem('userAvatar');
     localStorage.removeItem('mascota_idUsuario');
     localStorage.removeItem('idUsuario');
+    
+    // Limpiar también otros datos de sesión si existen
+    ['ejerciciosRealizados', 'diasConsecutivos', 'emocionesRegistradas', 'retosCompletados'].forEach(item => {
+        localStorage.removeItem(item);
+    });
 
+    // Redirigir a pantalla de bienvenida
     mostrarPantalla('welcome-screen');
+    
+    // Limpiar formularios
+    const loginForm = document.getElementById('login-screen');
+    if (loginForm) {
+        loginForm.querySelectorAll('input').forEach(input => input.value = '');
+    }
+    
+    console.log("👋 Sesión cerrada exitosamente");
 }
-
 
 /* ---------- register ---------- */
 async function register() {
@@ -4691,46 +4747,179 @@ async function register() {
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value;
     const confirm = document.getElementById('register-confirm').value;
-    if (!name || !email || !password || !confirm) { alert('Por favor, completa todos los campos'); return; }
-    if (password !== confirm) { alert('Las contraseñas no coinciden'); return; }
+    
+    // Validación mejorada
+    if (!name || !email || !password || !confirm) { 
+        alert('Por favor, completa todos los campos'); 
+        return; 
+    }
+    
+    if (password.length < 6) {
+        alert('La contraseña debe tener al menos 6 caracteres');
+        return;
+    }
+    
+    if (password !== confirm) { 
+        alert('Las contraseñas no coinciden'); 
+        return; 
+    }
+
+    // Mostrar indicador de carga
+    const registerBtn = document.querySelector('#register-screen button[onclick="register()"]');
+    const originalText = registerBtn?.textContent || 'Registrarse';
+    if (registerBtn) {
+        registerBtn.textContent = 'Registrando...';
+        registerBtn.disabled = true;
+    }
 
     try {
+        console.log("📝 Intentando registro con:", { name, email });
+        
         const data = await apiRequest('/auth/register', {
             method: 'POST',
-            body: { nombre: name, email: email, password: password }
+            body: { 
+                nombre: name, 
+                email: email, 
+                password: password 
+            }
         });
 
+        console.log("✅ Registro exitoso, datos recibidos:", data);
+
+        // Guardar token y datos del usuario
         localStorage.setItem('authToken', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
-        localStorage.setItem('userAvatar', data.user.avatar || 'default');
+        
+        // 🔥 CORREGIDO: Usar propiedades correctas para SQLite
+        const userName = data.user.Nombre || data.user.nombre || name;
+        const userEmail = data.user.Correo || data.user.email || email;
+        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
+        
+        localStorage.setItem('userName', userName);
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 Asegurar que el idUsuario se guarda correctamente
+        // 🔥 CORREGIDO: Asegurar idUsuario
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
-            localStorage.setItem('idUsuario', idUsuario);
+            localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado en registro:", idUsuario);
+        } else {
+            console.warn("⚠️ No se recibió idUsuario en registro");
+            // Intentar del token
+            try {
+                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
+                if (tokenPayload.userId) {
+                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
+                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
+                }
+            } catch (tokenErr) {
+                console.error("❌ Error parseando token:", tokenErr);
+            }
         }
 
-        // Guardar para mascotas
-        localStorage.setItem("mascota_idUsuario", idUsuario);
-        if (typeof mascota !== "undefined") {
-            mascota.idUsuario = idUsuario;
+        // Guardar para mascotas solo si tenemos idUsuario
+        if (idUsuario) {
+            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
+            if (typeof mascota !== "undefined") {
+                mascota.idUsuario = idUsuario;
+            }
         } 
 
+        // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
         await loadUserData();
         setupUserAvatar();
 
-        setTimeout(()=> {
+        // Mensaje de bienvenida
+        setTimeout(() => {
             const msg = document.getElementById('welcome-message');
-            if (msg) msg.textContent = `¡Bienvenido/a, ${data.user.nombre || data.user.Nombre || ''}!`;
+            if (msg) {
+                msg.textContent = `¡Bienvenido/a a MindWeb, ${userName}!`;
+                msg.style.display = 'block';
+                setTimeout(() => {
+                    msg.style.display = 'none';
+                }, 3000);
+            }
+            
+            // Mostrar tutorial inicial si es primer registro
+            const firstTime = !localStorage.getItem('tutorialVisto');
+            if (firstTime) {
+                alert('🎉 ¡Bienvenido a MindWeb! Te recomendamos explorar las diferentes secciones para conocer todas las funciones disponibles.');
+                localStorage.setItem('tutorialVisto', 'true');
+            }
         }, 100);
+
     } catch (err) {
-        alert('Error: ' + err.message);
+        console.error('❌ Error en registro:', err);
+        
+        // Mensajes de error más específicos
+        let errorMsg = 'Error al registrarse';
+        if (err.message.includes('ya existe') || err.message.includes('duplicate')) {
+            errorMsg = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
+        } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
+            errorMsg = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
+        } else if (err.message.includes('email') || err.message.includes('correo')) {
+            errorMsg = 'Por favor, ingresa un correo electrónico válido.';
+        } else {
+            errorMsg = 'Error: ' + err.message;
+        }
+        
+        alert(errorMsg);
+        
+    } finally {
+        // Restaurar botón
+        if (registerBtn) {
+            registerBtn.textContent = originalText;
+            registerBtn.disabled = false;
+        }
     }
 }
+
+// 🔥 FUNCIÓN AUXILIAR PARA VERIFICAR SESIÓN
+function verificarSesion() {
+    const token = localStorage.getItem('authToken');
+    const user = localStorage.getItem('user');
+    const idUsuario = localStorage.getItem('idUsuario');
+    
+    if (token && user && idUsuario) {
+        console.log("🔐 Sesión activa - Usuario:", JSON.parse(user).Nombre || JSON.parse(user).nombre);
+        return true;
+    } else {
+        console.log("🔓 No hay sesión activa");
+        
+        // Limpiar datos inconsistentes
+        if ((token && !user) || (user && !token)) {
+            console.warn("⚠️ Datos de sesión inconsistentes, limpiando...");
+            logout();
+        }
+        
+        return false;
+    }
+}
+
+// 🔥 INICIALIZAR AL CARGAR LA PÁGINA
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar sesión al cargar
+    const tieneSesion = verificarSesion();
+    
+    if (tieneSesion) {
+        console.log("🔄 Usuario ya logueado, mostrando app principal...");
+        mostrarPantalla('main-app');
+        updateUserInfo();
+        setupUserAvatar();
+        
+        // Cargar datos en segundo plano
+        setTimeout(() => {
+            loadUserData().catch(err => console.warn("⚠️ Error cargando datos:", err));
+            cargarDatosPerfil().catch(err => console.warn("⚠️ Error cargando perfil:", err));
+        }, 500);
+    } else {
+        console.log("👋 Mostrando pantalla de bienvenida");
+        mostrarPantalla('welcome-screen');
+    }
+});
 
 /* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
 async function cargarDatosPerfil() {
@@ -4809,7 +4998,7 @@ async function guardarPerfil() {
 
         console.log("📤 Enviando datos:", body); // Para debug
 
-        const result = await apiRequest('/api/perfil/guardar', {
+        const result = await apiRequest('/perfil/guardar', {
             method: 'POST',
             body: body
         });

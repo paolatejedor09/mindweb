@@ -1,4 +1,4 @@
-// server.js - DUAL DB: SQL Server (local) + SQLite (producción) - VERSIÓN CORREGIDA
+// server.js - DUAL DB: SQL Server (local) + SQLite (producción) 
 const express = require('express');
 const cors = require('cors');
 const sql = require('mssql');
@@ -418,13 +418,16 @@ app.post('/api/auth/register', async (req, res) => {
 
     // ------------------------- SQLITE -------------------------
     if (USE_SQLITE) {
-      // SOLO LÓGICA DE NEGOCIO - NO CREAR TABLAS
+      // SOLO LÓGICA DE NEGOCIO - NO CREAR TABLAS (las tablas ya se crearon al inicio)
+      
+      // Verificar si el usuario ya existe
       const exists = await sqliteGet('SELECT IdUsuario FROM Usuarios WHERE Correo = ?', [correoFinal]);
       if (exists) return res.status(400).json({ error: 'El usuario ya existe.' });
 
+      // Insertar nuevo usuario
       const insert = await sqliteRun(
         `INSERT INTO Usuarios (Nombre, Correo, Contrasena, Nivel, Puntos, FechaRegistro)
-         VALUES (?, ?, ?, 1, 0, datetime("now"))`,
+         VALUES (?, ?, ?, 1, 0, datetime('now'))`,
         [nombreFinal, correoFinal, hashed]
       );
 
@@ -437,11 +440,18 @@ app.post('/api/auth/register', async (req, res) => {
         FechaRegistro: new Date().toISOString()
       };
 
-      // Insertar perfil si no existe
-      await sqliteRun('INSERT OR IGNORE INTO Perfil (IdUsuario) VALUES (?)', [newUser.IdUsuario]);
+      // Crear perfil vacío para el nuevo usuario
+      await sqliteRun(
+        'INSERT OR IGNORE INTO Perfil (IdUsuario) VALUES (?)',
+        [newUser.IdUsuario]
+      );
 
       const token = jwt.sign({ userId: newUser.IdUsuario, email: newUser.Correo }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, user: newUser });
+      return res.json({ 
+        token, 
+        user: newUser,
+        message: 'Registro exitoso'
+      });
     }
 
     // ------------------------- SQL SERVER -------------------------
@@ -469,10 +479,12 @@ app.post('/api/auth/register', async (req, res) => {
 
   } catch (e) {
     console.error('❌ Error REGISTER:', e);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: e.message 
+    });
   }
 });
-
 // ------------------------------------------------------
 //  AUTH: LOGIN
 // ------------------------------------------------------
@@ -490,13 +502,35 @@ app.post('/api/auth/login', async (req, res) => {
     if (USE_SQLITE) {
       // SOLO CONSULTA - NO CREAR TABLAS
       const user = await sqliteGet('SELECT * FROM Usuarios WHERE Correo = ?', [correoFinal]);
-      if (!user) return res.status(400).json({ error: 'Usuario no encontrado.' });
+      
+      if (!user) return res.status(400).json({ 
+        error: 'Usuario no encontrado.',
+        suggestion: 'Verifica tu correo o regístrate primero'
+      });
 
       const ok = await bcrypt.compare(passwordFinal, user.Contrasena);
-      if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta.' });
+      if (!ok) return res.status(401).json({ 
+        error: 'Contraseña incorrecta.',
+        suggestion: 'Verifica tu contraseña'
+      });
 
-      const token = jwt.sign({ userId: user.IdUsuario, email: user.Correo }, JWT_SECRET, { expiresIn: '30d' });
-      return res.json({ token, user });
+      const token = jwt.sign({ 
+        userId: user.IdUsuario, 
+        email: user.Correo 
+      }, JWT_SECRET, { expiresIn: '30d' });
+      
+      return res.json({ 
+        token, 
+        user: {
+          IdUsuario: user.IdUsuario,
+          Nombre: user.Nombre,
+          Correo: user.Correo,
+          Nivel: user.Nivel,
+          Puntos: user.Puntos,
+          FechaRegistro: user.FechaRegistro
+        },
+        message: 'Inicio de sesión exitoso'
+      });
     }
 
     // ------------------------- SQL SERVER -------------------------
@@ -517,7 +551,10 @@ app.post('/api/auth/login', async (req, res) => {
 
   } catch (e) {
     console.error('❌ Error LOGIN:', e);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: e.message 
+    });
   }
 });
 
@@ -1227,14 +1264,19 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
       );
 
       return res.json({
-        emocionesRegistradas: emocionesResult.Total || 0,
-        ejerciciosRealizados: ejerciciosResult.Total || 0,
-        retosCompletados: retosResult.Total || 0,
-        diasConsecutivos: diasResult.Dias || 0
+        emocionesRegistradas: emocionesResult?.Total || 0,
+        ejerciciosRealizados: ejerciciosResult?.Total || 0,
+        retosCompletados: retosResult?.Total || 0,
+        diasConsecutivos: diasResult?.Dias || 0
       });
     }
 
     // ---------------- SQL SERVER ----------------
+    // CORRECCIÓN: Asegurar que la conexión a SQL Server esté disponible
+    if (!sql) {
+      throw new Error('SQL Server no configurado');
+    }
+
     const emocionesResult = await sqlRequestFromParams({ idUsuario: userId })
       .query('SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = @idUsuario');
 
@@ -1251,10 +1293,10 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
               AND FechaRegistro >= DATEADD(day, -7, GETDATE())`);
 
     return res.json({
-      emocionesRegistradas: emocionesResult.recordset[0].Total,
-      ejerciciosRealizados: ejerciciosResult.recordset[0].Total,
-      retosCompletados: retosResult.recordset[0].Total,
-      diasConsecutivos: diasResult.recordset[0].Dias
+      emocionesRegistradas: emocionesResult?.recordset?.[0]?.Total || 0,
+      ejerciciosRealizados: ejerciciosResult?.recordset?.[0]?.Total || 0,
+      retosCompletados: retosResult?.recordset?.[0]?.Total || 0,
+      diasConsecutivos: diasResult?.recordset?.[0]?.Dias || 0
     });
 
   } catch (error) {
@@ -1273,9 +1315,10 @@ app.post('/api/perfil/guardar', async (req, res) => {
 
     if (USE_SQLITE) {
       // SOLO OPERACIONES - NO CREAR TABLAS
-      const existe = await sqliteGet('SELECT 1 FROM Perfil WHERE IdUsuario = ?', [idUsuario]);
+      // CORRECCIÓN: Verificar correctamente si existe
+      const existe = await sqliteGet('SELECT 1 as existe FROM Perfil WHERE IdUsuario = ?', [idUsuario]);
 
-      if (!existe) {
+      if (!existe || !existe.existe) {
         await sqliteRun(
           `INSERT INTO Perfil (IdUsuario, NombreCompleto, CorreoElectronico, FechaDeNacimiento, Genero, Biografia)
            VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1294,8 +1337,13 @@ app.post('/api/perfil/guardar', async (req, res) => {
     }
 
     // ---------------- SQL SERVER ----------------
+    // CORRECCIÓN: Asegurar que la conexión a SQL Server esté disponible
+    if (!sql) {
+      throw new Error('SQL Server no configurado');
+    }
+
     const existe = await sqlRequestFromParams({ IdUsuario: idUsuario })
-      .query('SELECT 1 FROM Perfil WHERE IdUsuario = @IdUsuario');
+      .query('SELECT 1 as existe FROM Perfil WHERE IdUsuario = @IdUsuario');
 
     if (existe.recordset.length === 0) {
       await sqlRequestFromParams({
