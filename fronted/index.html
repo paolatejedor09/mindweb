@@ -4877,9 +4877,45 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+/* ---------- LOGOUT (AGREGA ESTA FUNCIÓN) ---------- */
+function logout() {
+    // Confirmar antes de cerrar sesión
+    if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+        return;
+    }
+    
+    // Limpiar localStorage
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userAvatar');
+    localStorage.removeItem('mascota_idUsuario');
+    localStorage.removeItem('idUsuario');
+    
+    // Limpiar también otros datos de sesión
+    ['ejerciciosRealizados', 'diasConsecutivos', 'emocionesRegistradas', 'retosCompletados'].forEach(item => {
+        localStorage.removeItem(item);
+    });
+
+    // Redirigir a pantalla de bienvenida
+    mostrarPantalla('welcome-screen');
+    
+    // Limpiar formularios
+    const loginForm = document.getElementById('login-screen');
+    if (loginForm) {
+        loginForm.querySelectorAll('input').forEach(input => input.value = '');
+    }
+    
+    console.log("👋 Sesión cerrada exitosamente");
+}
+
 // ==================== CARGAR PERFIL DESDE LA API (SQLite) ====================
 async function cargarDatosPerfil() {
     try {
+        console.log("📥 Cargando datos del perfil...");
+        
         // Asegurarnos de tener el idUsuario
         const idUsuario = initializeUserId();
         
@@ -4888,26 +4924,26 @@ async function cargarDatosPerfil() {
             // Mostrar datos básicos del localStorage
             updateUserInfo();
             setupUserAvatar();
-            updateProfileStats();
+            if (typeof updateProfileStats === 'function') updateProfileStats();
             return;
         }
 
-        console.log("📥 Cargando perfil para idUsuario:", idUsuario);
+        console.log("🔍 Buscando perfil para idUsuario:", idUsuario);
 
-        // Llamada al backend SQLite - SIN /api/ en la ruta
+        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
         let data;
         try {
-            data = await apiRequest(`/perfil/completo?idUsuario=${idUsuario}`);
+            data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
         } catch (apiError) {
-            console.warn("⚠️ No se pudo cargar perfil desde SQLite, usando datos locales:", apiError);
+            console.warn("⚠️ No se pudo cargar perfil desde API:", apiError);
             // Si falla la API, usar datos del localStorage
             updateUserInfo();
             setupUserAvatar();
-            updateProfileStats();
+            if (typeof updateProfileStats === 'function') updateProfileStats();
             return;
         }
         
-        console.log("📥 Datos del perfil recibidos:", data);
+        console.log("✅ Datos del perfil recibidos:", data);
 
         // Rellenar formulario si los elementos existen
         const perfilNombre = document.getElementById('perfil-nombre');
@@ -4954,39 +4990,48 @@ async function cargarDatosPerfil() {
         // Intentar cargar estadísticas desde el endpoint
         await cargarEstadisticasPerfil();
         
-        console.log("✅ Perfil cargado exitosamente desde SQLite");
+        console.log("✅ Perfil cargado exitosamente");
 
     } catch (err) {
         console.error('❌ Error al cargar perfil:', err);
         // Fallback: mostrar datos básicos
         updateUserInfo();
         setupUserAvatar();
-        updateProfileStats();
+        if (typeof updateProfileStats === 'function') updateProfileStats();
     }
 }
 
 // ==================== GUARDAR PERFIL EN SQLite ====================
 async function guardarPerfil() {
     try {
-        const idUsuario = localStorage.getItem('idUsuario');
+        console.log("💾 Guardando perfil...");
+        
+        const idUsuario = initializeUserId();
         if (!idUsuario) {
-            alert('Error: No se encontró el ID de usuario');
+            alert('Error: No se encontró el ID de usuario. Por favor, inicia sesión nuevamente.');
             return;
         }
 
+        // Obtener valores del formulario
+        const perfilNombreInput = document.getElementById('perfil-nombre');
+        const perfilEmailInput = document.getElementById('perfil-email');
+        const perfilFechaInput = document.getElementById('perfil-fecha-nacimiento');
+        const perfilGeneroInput = document.getElementById('perfil-genero');
+        const perfilBioInput = document.getElementById('perfil-bio');
+        
         const body = {
-            idUsuario: parseInt(idUsuario),
-            nombreCompleto: document.getElementById('perfil-nombre').value,
-            correoElectronico: document.getElementById('perfil-email').value,
-            fechaDeNacimiento: document.getElementById('perfil-fecha-nacimiento').value,
-            genero: document.getElementById('perfil-genero').value,
-            biografia: document.getElementById('perfil-bio').value
+            idUsuario: idUsuario,
+            nombreCompleto: perfilNombreInput ? perfilNombreInput.value.trim() : '',
+            correoElectronico: perfilEmailInput ? perfilEmailInput.value.trim() : '',
+            fechaDeNacimiento: perfilFechaInput ? perfilFechaInput.value : '',
+            genero: perfilGeneroInput ? perfilGeneroInput.value : '',
+            biografia: perfilBioInput ? perfilBioInput.value.trim() : ''
         };
 
         // Solo incluir campos de contraseña si están completos
-        const contrasenaActual = document.getElementById('perfil-password-actual').value;
-        const nuevaContrasena = document.getElementById('perfil-password-nueva').value;
-        const confirmarNuevaContrasena = document.getElementById('perfil-password-confirmar').value;
+        const contrasenaActual = document.getElementById('perfil-password-actual')?.value || '';
+        const nuevaContrasena = document.getElementById('perfil-password-nueva')?.value || '';
+        const confirmarNuevaContrasena = document.getElementById('perfil-password-confirmar')?.value || '';
         
         if (contrasenaActual || nuevaContrasena || confirmarNuevaContrasena) {
             body.contrasenaActual = contrasenaActual;
@@ -4994,31 +5039,41 @@ async function guardarPerfil() {
             body.confirmarNuevaContrasena = confirmarNuevaContrasena;
         }
 
-        console.log("📤 Enviando datos a SQLite:", body);
+        console.log("📤 Enviando datos del perfil:", body);
 
-        // Llamada al backend SQLite - SIN /api/ en la ruta
-        const result = await apiRequest('/perfil/guardar', {
+        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
+        const result = await apiFetch('/perfil/guardar', {
             method: 'POST',
             body: body
         });
 
+        console.log("✅ Respuesta del servidor:", result);
+
         // Limpiar campos de contraseña
-        document.getElementById('perfil-password-actual').value = '';
-        document.getElementById('perfil-password-nueva').value = '';
-        document.getElementById('perfil-password-confirmar').value = '';
+        const perfilPassActual = document.getElementById('perfil-password-actual');
+        const perfilPassNueva = document.getElementById('perfil-password-nueva');
+        const perfilPassConfirmar = document.getElementById('perfil-password-confirmar');
+        
+        if (perfilPassActual) perfilPassActual.value = '';
+        if (perfilPassNueva) perfilPassNueva.value = '';
+        if (perfilPassConfirmar) perfilPassConfirmar.value = '';
 
         // Guardar en localStorage para uso inmediato
-        localStorage.setItem('userName', body.nombreCompleto);
-        localStorage.setItem('userEmail', body.correoElectronico);
+        if (body.nombreCompleto) {
+            localStorage.setItem('userName', body.nombreCompleto);
+        }
+        if (body.correoElectronico) {
+            localStorage.setItem('userEmail', body.correoElectronico);
+        }
 
         // Actualizar la información en la UI
         updateUserInfo();
         setupUserAvatar();
         
-        alert("✅ Perfil actualizado correctamente en SQLite");
+        alert("✅ Perfil actualizado correctamente");
         
     } catch (err) {
-        console.error('Error al guardar perfil:', err);
+        console.error('❌ Error al guardar perfil:', err);
         alert('❌ Error al guardar perfil: ' + (err.message || 'Error desconocido'));
     }
 }
@@ -5026,19 +5081,16 @@ async function guardarPerfil() {
 // ==================== CARGAR ESTADÍSTICAS DESDE SQLite ====================
 async function cargarEstadisticasPerfil() {
     try {
-        const token = localStorage.getItem('token');
+        console.log("📊 Cargando estadísticas...");
+        
+        const token = localStorage.getItem('authToken') || localStorage.getItem('token');
         if (!token) {
-            console.warn("No hay token, no se pueden cargar estadísticas");
+            console.warn("⚠️ No hay token, no se pueden cargar estadísticas");
             return;
         }
 
-        // Llamada al endpoint de estadísticas - SIN /api/ en la ruta
-        const data = await apiRequest('/estadisticas/generales', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
+        const data = await apiFetch('/estadisticas/generales');
 
         console.log("📊 Estadísticas recibidas:", data);
 
@@ -5048,52 +5100,35 @@ async function cargarEstadisticasPerfil() {
         localStorage.setItem('retosCompletados', data.retosCompletados || 0);
         localStorage.setItem('diasConsecutivos', data.diasConsecutivos || 0);
 
-        // Actualizar UI
-        updateProfileStats();
+        // Actualizar UI si la función existe
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
+        }
+
+        return data;
 
     } catch (error) {
         console.warn("⚠️ No se pudieron cargar estadísticas:", error);
         // Usar valores por defecto
-        updateProfileStats();
-    }
-}
-
-// ==================== FUNCION apiRequest CORREGIDA ====================
-// Asegúrate de que esta función no añada /api/ automáticamente
-async function apiRequest(endpoint, options = {}) {
-    const baseUrl = ''; // Vacío para rutas relativas
-    const url = baseUrl + endpoint;
-    
-    const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
+        const defaultStats = {
+            emocionesRegistradas: 0,
+            ejerciciosRealizados: 0,
+            retosCompletados: 0,
+            diasConsecutivos: 0
+        };
+        
+        // Guardar valores por defecto
+        Object.entries(defaultStats).forEach(([key, value]) => {
+            localStorage.setItem(key, value);
+        });
+        
+        // Actualizar UI si la función existe
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
         }
-    };
-
-    const config = {
-        ...defaultOptions,
-        ...options,
-        headers: {
-            ...defaultOptions.headers,
-            ...options.headers
-        }
-    };
-
-    if (config.body && typeof config.body === 'object') {
-        config.body = JSON.stringify(config.body);
+        
+        return defaultStats;
     }
-
-    console.log(`🌐 Llamando a: ${url}`, config);
-
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error ${response.status}: ${errorText}`);
-    }
-
-    return await response.json();
 }
 
 /* ---------- loadUserData ---------- */
