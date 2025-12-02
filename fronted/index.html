@@ -4483,7 +4483,185 @@ stat-card {
 <head>
     
     <script>
-   
+   // ==================== FUNCIONES FALTANTES ====================
+
+// 1. initializeUserId (FALTA ESTA)
+function initializeUserId() {
+    try {
+        console.log("🔍 Buscando ID de usuario...");
+        
+        // Opción 1: Directo de localStorage
+        let idUsuario = localStorage.getItem('idUsuario');
+        if (idUsuario) {
+            console.log("✅ ID encontrado en localStorage:", idUsuario);
+            return parseInt(idUsuario);
+        }
+        
+        // Opción 2: Del objeto user
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                idUsuario = user.IdUsuario || user.idUsuario || user.userId;
+                if (idUsuario) {
+                    localStorage.setItem('idUsuario', idUsuario.toString());
+                    console.log("✅ ID obtenido del objeto user:", idUsuario);
+                    return parseInt(idUsuario);
+                }
+            } catch (e) {
+                console.warn("⚠️ Error parseando user:", e);
+            }
+        }
+        
+        // Opción 3: Del token
+        const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+        if (token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                    const payload = JSON.parse(atob(parts[1]));
+                    idUsuario = payload.userId || payload.idUsuario;
+                    if (idUsuario) {
+                        localStorage.setItem('idUsuario', idUsuario.toString());
+                        console.log("✅ ID extraído del token:", idUsuario);
+                        return parseInt(idUsuario);
+                    }
+                }
+            } catch (tokenErr) {
+                console.error("❌ Error parseando token:", tokenErr);
+            }
+        }
+        
+        console.warn("⚠️ No se pudo obtener idUsuario");
+        return null;
+        
+    } catch (error) {
+        console.error("❌ Error en initializeUserId:", error);
+        return null;
+    }
+}
+
+// 2. updateUserInfo (FALTA ESTA - CRÍTICA)
+function updateUserInfo() {
+    try {
+        console.log("👤 Actualizando información del usuario...");
+        
+        // Obtener datos del localStorage
+        const userName = localStorage.getItem('userName') || 'Usuario';
+        const userEmail = localStorage.getItem('userEmail') || 'correo@ejemplo.com';
+        
+        console.log("📋 Datos para mostrar:", { userName, userEmail });
+        
+        // Actualizar elementos en la UI
+        const nombreElem = document.getElementById('nombre-usuario');
+        const emailElem = document.getElementById('email-usuario');
+        
+        if (nombreElem) {
+            nombreElem.textContent = userName;
+            console.log("✅ Nombre actualizado:", userName);
+        } else {
+            console.warn("⚠️ Elemento #nombre-usuario no encontrado");
+        }
+        
+        if (emailElem) {
+            emailElem.textContent = userEmail;
+            console.log("✅ Email actualizado:", userEmail);
+        } else {
+            console.warn("⚠️ Elemento #email-usuario no encontrado");
+        }
+        
+        // También actualizar en el formulario si existe
+        const perfilNombreInput = document.getElementById('perfil-nombre');
+        const perfilEmailInput = document.getElementById('perfil-email');
+        
+        if (perfilNombreInput && !perfilNombreInput.value) {
+            perfilNombreInput.value = userName;
+        }
+        
+        if (perfilEmailInput && !perfilEmailInput.value) {
+            perfilEmailInput.value = userEmail;
+        }
+        
+        console.log("✅ Información del usuario actualizada");
+        
+    } catch (error) {
+        console.error("❌ Error en updateUserInfo:", error);
+    }
+}
+
+// 3. setupUserAvatar (PROBABLEMENTE FALTA)
+function setupUserAvatar() {
+    try {
+        const avatarElement = document.getElementById('avatar-usuario');
+        if (!avatarElement) {
+            console.warn("⚠️ Elemento #avatar-usuario no encontrado");
+            return;
+        }
+        
+        // Obtener nombre
+        const userName = localStorage.getItem('userName') || 'U';
+        
+        // Crear iniciales
+        const initials = userName
+            .split(' ')
+            .map(word => word[0] || '')
+            .join('')
+            .toUpperCase()
+            .substring(0, 2) || 'U';
+        
+        // Establecer contenido y estilos
+        avatarElement.innerHTML = initials;
+        avatarElement.style.backgroundColor = '#4ECDC4'; // Color fijo
+        avatarElement.style.display = 'flex';
+        avatarElement.style.alignItems = 'center';
+        avatarElement.style.justifyContent = 'center';
+        avatarElement.style.color = 'white';
+        avatarElement.style.fontWeight = 'bold';
+        avatarElement.style.borderRadius = '50%';
+        avatarElement.style.width = '40px';
+        avatarElement.style.height = '40px';
+        avatarElement.style.fontSize = '16px';
+        
+        console.log("✅ Avatar configurado:", initials);
+        
+    } catch (error) {
+        console.error("❌ Error en setupUserAvatar:", error);
+    }
+}
+
+// 4. updateProfileStats (PROBABLEMENTE FALTA)
+function updateProfileStats() {
+    try {
+        console.log("📊 Actualizando estadísticas en UI...");
+        
+        // Obtener valores del localStorage
+        const emocionesRegistradas = localStorage.getItem('emocionesRegistradas') || 0;
+        const ejerciciosRealizados = localStorage.getItem('ejerciciosRealizados') || 0;
+        const retosCompletados = localStorage.getItem('retosCompletados') || 0;
+        const diasConsecutivos = localStorage.getItem('diasConsecutivos') || 0;
+        
+        // Actualizar elementos si existen
+        const emocionesElem = document.getElementById('emociones-registradas');
+        const ejerciciosElem = document.getElementById('ejercicios-realizados');
+        const retosElem = document.getElementById('retos-completados');
+        const diasElem = document.getElementById('dias-consecutivos-perfil');
+        
+        if (emocionesElem) emocionesElem.textContent = emocionesRegistradas;
+        if (ejerciciosElem) ejerciciosElem.textContent = ejerciciosRealizados;
+        if (retosElem) retosElem.textContent = retosCompletados;
+        if (diasElem) diasElem.textContent = diasConsecutivos;
+        
+        console.log("✅ Estadísticas actualizadas:", {
+            emocionesRegistradas,
+            ejerciciosRealizados,
+            retosCompletados,
+            diasConsecutivos
+        });
+        
+    } catch (error) {
+        console.error("❌ Error en updateProfileStats:", error);
+    }
+}
 // ==================== CONFIGURACIÓN API AUTO ====================
 // Detectar automáticamente si estamos en producción
 function getApiBaseUrl() {
@@ -5130,6 +5308,8 @@ async function cargarEstadisticasPerfil() {
         return defaultStats;
     }
 }
+
+
 
 /* ---------- loadUserData ---------- */
 async function loadUserData() {
