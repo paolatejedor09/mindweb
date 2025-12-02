@@ -298,66 +298,163 @@ app.post('/api/ejercicios/gratitud', authenticateToken, async (req, res) => {
 });
 
 // ----------------- RETOS -----------------
+
+// Garantizar estructura correcta en SQLite
+async function ensureSQLiteRetos() {
+  await sqliteRun(`
+    CREATE TABLE IF NOT EXISTS Retos (
+      IdReto INTEGER PRIMARY KEY AUTOINCREMENT,
+      IdUsuario INTEGER,
+      Titulo TEXT,
+      Estado TEXT DEFAULT 'Pendiente',
+      FechaCreacion TEXT,
+      FechaCumplido TEXT
+    )
+  `);
+}
+
 app.get('/api/retos', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+
     if (USE_SQLITE) {
-      await sqliteRun('CREATE TABLE IF NOT EXISTS Retos (IdReto INTEGER PRIMARY KEY AUTOINCREMENT, IdUsuario INTEGER, Titulo TEXT, Estado TEXT, FechaCreacion TEXT, FechaCumplido TEXT)');
-      const rows = await sqliteAll('SELECT * FROM Retos WHERE IdUsuario = ? ORDER BY FechaCreacion DESC', [userId]);
+      await ensureSQLiteRetos();
+      const rows = await sqliteAll(
+        'SELECT * FROM Retos WHERE IdUsuario = ? ORDER BY FechaCreacion DESC',
+        [userId]
+      );
       return res.json(rows);
     } else {
-      const result = await sqlRequestFromParams({ IdUsuario: userId }).query('SELECT * FROM Retos WHERE IdUsuario = @IdUsuario ORDER BY FechaCreacion DESC');
+      const result = await sqlRequestFromParams({ IdUsuario: userId })
+        .query('SELECT * FROM Retos WHERE IdUsuario = @IdUsuario ORDER BY FechaCreacion DESC');
       return res.json(result.recordset);
     }
-  } catch (err) { console.error('ERROR obteniendo retos:', err); res.status(500).json({ error: 'Error al obtener retos' }); }
+
+  } catch (err) {
+    console.error('ERROR obteniendo retos:', err);
+    res.status(500).json({ error: 'Error al obtener retos' });
+  }
 });
 
 app.post('/api/retos', authenticateToken, async (req, res) => {
   try {
-    const { Titulo } = req.body; const userId = req.user.userId; if (!Titulo) return res.status(400).json({ error: 'El título es obligatorio' });
+    const { Titulo } = req.body;
+    const userId = req.user.userId;
+
+    if (!Titulo) return res.status(400).json({ error: 'El título es obligatorio' });
+
     if (USE_SQLITE) {
-      const r = await sqliteRun('INSERT INTO Retos (IdUsuario, Titulo, FechaCreacion) VALUES (?, ?, datetime("now"))', [userId, Titulo]);
+      await ensureSQLiteRetos();
+
+      const r = await sqliteRun(
+        `INSERT INTO Retos (IdUsuario, Titulo, Estado, FechaCreacion)
+         VALUES (?, ?, 'Pendiente', datetime('now'))`,
+        [userId, Titulo]
+      );
+
       const row = await sqliteGet('SELECT * FROM Retos WHERE IdReto = ?', [r.lastID]);
       return res.json(row);
+
     } else {
-      const result = await sqlRequestFromParams({ IdUsuario: userId, Titulo }).query('INSERT INTO Retos (IdUsuario, Titulo) OUTPUT INSERTED.* VALUES (@IdUsuario, @Titulo)');
+      const result = await sqlRequestFromParams({ IdUsuario: userId, Titulo })
+        .query(`
+          INSERT INTO Retos (IdUsuario, Titulo, Estado, FechaCreacion)
+          OUTPUT INSERTED.*
+          VALUES (@IdUsuario, @Titulo, 'Pendiente', GETDATE())
+        `);
       return res.json(result.recordset[0]);
     }
-  } catch (err) { console.error('❌ ERROR guardando reto:', err); res.status(500).json({ error: 'Error al guardar reto' }); }
+
+  } catch (err) {
+    console.error('❌ ERROR guardando reto:', err);
+    res.status(500).json({ error: 'Error al guardar reto' });
+  }
 });
 
 app.put('/api/retos/:id', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params; const { Cumplido } = req.body; const userId = req.user.userId;
+    const { id } = req.params;
+    const { Cumplido } = req.body;
+    const userId = req.user.userId;
+
+    let nuevoEstado = Cumplido ? 'Cumplido' : 'Fallido';
+
     if (USE_SQLITE) {
-      if (Cumplido) await sqliteRun('UPDATE Retos SET Estado = ?, FechaCumplido = datetime("now") WHERE IdReto = ? AND IdUsuario = ?', ['Cumplido', id, userId]);
-      else await sqliteRun('UPDATE Retos SET Estado = ?, FechaCumplido = NULL WHERE IdReto = ? AND IdUsuario = ?', ['Fallido', id, userId]);
+      await ensureSQLiteRetos();
+
+      if (Cumplido) {
+        await sqliteRun(
+          `UPDATE Retos SET Estado = ?, FechaCumplido = datetime('now')
+           WHERE IdReto = ? AND IdUsuario = ?`,
+          [nuevoEstado, id, userId]
+        );
+      } else {
+        await sqliteRun(
+          `UPDATE Retos SET Estado = ?, FechaCumplido = NULL
+           WHERE IdReto = ? AND IdUsuario = ?`,
+          [nuevoEstado, id, userId]
+        );
+      }
+
       const row = await sqliteGet('SELECT * FROM Retos WHERE IdReto = ?', [id]);
       return res.json(row);
+
     } else {
-      const q = Cumplido ? "UPDATE Retos SET Estado = 'Cumplido', FechaCumplido = GETDATE() WHERE IdReto = @IdReto AND IdUsuario = @IdUsuario" : "UPDATE Retos SET Estado = 'Fallido', FechaCumplido = NULL WHERE IdReto = @IdReto AND IdUsuario = @IdUsuario";
+      const q = Cumplido
+        ? `UPDATE Retos SET Estado='Cumplido', FechaCumplido=GETDATE() WHERE IdReto=@IdReto AND IdUsuario=@IdUsuario`
+        : `UPDATE Retos SET Estado='Fallido', FechaCumplido=NULL WHERE IdReto=@IdReto AND IdUsuario=@IdUsuario`;
+
       const result = await sqlRequestFromParams({ IdReto: id, IdUsuario: userId }).query(q);
-      if (result.rowsAffected[0] === 0) return res.status(404).json({ error: 'Reto no encontrado' });
-      const retoActualizado = await sqlRequestFromParams({ IdReto: id }).query('SELECT * FROM Retos WHERE IdReto = @IdReto');
-      return res.json(retoActualizado.recordset[0]);
+
+      if (result.rowsAffected[0] === 0)
+        return res.status(404).json({ error: 'Reto no encontrado' });
+
+      const row = await sqlRequestFromParams({ IdReto: id })
+        .query('SELECT * FROM Retos WHERE IdReto = @IdReto');
+
+      return res.json(row.recordset[0]);
     }
-  } catch (err) { console.error('ERROR actualizando reto:', err); res.status(500).json({ error: 'Error al actualizar reto' }); }
+
+  } catch (err) {
+    console.error('ERROR actualizando reto:', err);
+    res.status(500).json({ error: 'Error al actualizar reto' });
+  }
 });
 
 app.delete('/api/retos/:id', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params; const userId = req.user.userId;
+    const { id } = req.params;
+    const userId = req.user.userId;
+
     if (USE_SQLITE) {
-      const r = await sqliteRun('DELETE FROM Retos WHERE IdReto = ? AND IdUsuario = ?', [id, userId]);
-      if (r.changes === 0) return res.status(404).json({ error: 'Reto no encontrado' });
+      await ensureSQLiteRetos();
+
+      const r = await sqliteRun(
+        'DELETE FROM Retos WHERE IdReto = ? AND IdUsuario = ?',
+        [id, userId]
+      );
+
+      if (r.changes === 0)
+        return res.status(404).json({ error: 'Reto no encontrado' });
+
       return res.json({ message: 'Reto eliminado correctamente' });
+
     } else {
-      const result = await sqlRequestFromParams({ IdReto: id, IdUsuario: userId }).query('DELETE FROM Retos WHERE IdReto = @IdReto AND IdUsuario = @IdUsuario');
-      if (result.rowsAffected[0] === 0) return res.status(404).json({ error: 'Reto no encontrado' });
+      const result = await sqlRequestFromParams({ IdReto: id, IdUsuario: userId })
+        .query('DELETE FROM Retos WHERE IdReto = @IdReto AND IdUsuario = @IdUsuario');
+
+      if (result.rowsAffected[0] === 0)
+        return res.status(404).json({ error: 'Reto no encontrado' });
+
       return res.json({ message: 'Reto eliminado correctamente' });
     }
-  } catch (err) { console.error('ERROR eliminando reto:', err); res.status(500).json({ error: 'Error al eliminar reto' }); }
+
+  } catch (err) {
+    console.error('ERROR eliminando reto:', err);
+    res.status(500).json({ error: 'Error al eliminar reto' });
+  }
 });
+
 
 // ----------------- EMOCIONES -----------------
 app.get('/api/emociones', async (req, res) => {
