@@ -4612,48 +4612,12 @@ window.addEventListener('load', async function() {
 });
 
 
-// ==================== NAVEGACIÓN ENTRE SECCIONES ====================
-function showSection(section) {
-    document.querySelectorAll('.section').forEach(sec => sec.style.display = 'none');
-    const target = document.getElementById(section);
-    if (target) {
-        target.style.display = 'block';
-        if (section === 'perfil') cargarDatosPerfil();
-        if (section === 'seguimiento') mostrarSeguimiento();
-    }
-}
 
-function mostrarPantalla(idMostrar) {
-    ['welcome-screen','login-screen','register-screen','main-app']
-        .forEach(id => document.getElementById(id)?.classList.add('hidden'));
-
-    document.getElementById(idMostrar)?.classList.remove('hidden');
-}
-
-window.addEventListener('load', async function() {
-    const authToken = localStorage.getItem('authToken');
-    const user = localStorage.getItem('user');
-
-    if (authToken && user) {
-        mostrarPantalla('main-app');
-        updateUserInfo();
-        await loadUserData();
-        setupUserAvatar();
-    } else {
-        mostrarPantalla('welcome-screen');
-    }
-
-    if (typeof inicializarCalendario === 'function') inicializarCalendario();
-    setTimeout(()=>{ if (typeof inicializarGraficos === 'function') inicializarGraficos(); }, 500);
-});
-
-
-// ==================== LOGIN ====================
+/* ---------- login ---------- */
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-
-    if (!email || !password) { alert('Completa todos los campos'); return; }
+    if (!email || !password) { alert('Por favor, completa todos los campos'); return; }
 
     try {
         const data = await apiRequest('/api/auth/login', {
@@ -4661,22 +4625,42 @@ async function login() {
             body: { email, password }
         });
 
+        console.log("✅ Login exitoso, datos recibidos:", data);
+
+        // Guardar token
         localStorage.setItem('authToken', data.token);
+
+        // Guardar info del usuario
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
         localStorage.setItem('userEmail', data.user.email || data.user.Correo || '');
         localStorage.setItem('userAvatar', data.user.avatar || data.user.Avatar || 'default');
 
+        // 🔥 Asegurar que el idUsuario se guarda correctamente
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
-        localStorage.setItem('idUsuario', idUsuario);
+        if (idUsuario) {
+            localStorage.setItem('idUsuario', idUsuario);
+            console.log("✅ idUsuario guardado:", idUsuario);
+        } else {
+            console.warn("⚠️ No se recibió idUsuario del servidor");
+        }
 
+        // Mascota
         localStorage.setItem("mascota_idUsuario", idUsuario);
+        if (typeof mascota !== "undefined") {
+            mascota.idUsuario = idUsuario;
+        }
 
+        // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
         await loadUserData();
+
+        // Cargar perfil
         await cargarDatosPerfil();
 
+        // Actualizar mascota después del login
+        console.log('🎯 Login exitoso - Actualizando mascota...');
         if (typeof forzarActualizacionMascota !== "undefined") {
             setTimeout(() => forzarActualizacionMascota(), 500);
         }
@@ -4687,81 +4671,129 @@ async function login() {
 }
 
 
-// ==================== LOGOUT ====================
 function logout() {
-    localStorage.clear();
+    // Limpiar session
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    localStorage.removeItem('userName');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userAvatar');
+    localStorage.removeItem('mascota_idUsuario');
+    localStorage.removeItem('idUsuario');
+
     mostrarPantalla('welcome-screen');
 }
 
 
-// ==================== REGISTER ====================
+/* ---------- register ---------- */
 async function register() {
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value;
     const confirm = document.getElementById('register-confirm').value;
-
-    if (!name || !email || !password || !confirm) return alert('Completa todos los campos');
-    if (password !== confirm) return alert('Las contraseñas no coinciden');
+    if (!name || !email || !password || !confirm) { alert('Por favor, completa todos los campos'); return; }
+    if (password !== confirm) { alert('Las contraseñas no coinciden'); return; }
 
     try {
         const data = await apiRequest('/api/auth/register', {
             method: 'POST',
-            body: { nombre: name, email, password }
+            body: { nombre: name, email: email, password: password }
         });
 
         localStorage.setItem('authToken', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('userName', data.user.nombre);
+        localStorage.setItem('userName', data.user.nombre || data.user.Nombre || '');
         localStorage.setItem('userAvatar', data.user.avatar || 'default');
 
+        // 🔥 Asegurar que el idUsuario se guarda correctamente
         const idUsuario = data.user.IdUsuario || data.user.idUsuario;
-        localStorage.setItem('idUsuario', idUsuario);
+        if (idUsuario) {
+            localStorage.setItem('idUsuario', idUsuario);
+            console.log("✅ idUsuario guardado en registro:", idUsuario);
+        }
+
+        // Guardar para mascotas
         localStorage.setItem("mascota_idUsuario", idUsuario);
+        if (typeof mascota !== "undefined") {
+            mascota.idUsuario = idUsuario;
+        } 
 
         mostrarPantalla('main-app');
         updateUserInfo();
         await loadUserData();
         setupUserAvatar();
 
+        setTimeout(()=> {
+            const msg = document.getElementById('welcome-message');
+            if (msg) msg.textContent = `¡Bienvenido/a, ${data.user.nombre || data.user.Nombre || ''}!`;
+        }, 100);
     } catch (err) {
         alert('Error: ' + err.message);
     }
 }
 
-
-// ==================== PERFIL - CARGAR ====================
+/* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
 async function cargarDatosPerfil() {
     try {
+        // Asegurarnos de tener el idUsuario
         const idUsuario = initializeUserId();
-        if (!idUsuario) return;
+        
+        if (!idUsuario) {
+            console.warn("❌ No hay idUsuario en localStorage - no se puede cargar perfil");
+            return;
+        }
 
-        let data = await apiRequest(`/api/perfil/completo?idUsuario=${idUsuario}`);
+        console.log("📥 Cargando perfil para idUsuario:", idUsuario);
 
+        // Llamada al backend
+        const data = await apiRequest(`/api/perfil/completo?idUsuario=${idUsuario}`);
+        
+        console.log("📥 Datos del perfil recibidos:", data);
+
+        // Rellenar formulario
         document.getElementById('perfil-nombre').value = data.NombreCompleto || '';
         document.getElementById('perfil-email').value = data.CorreoElectronico || '';
-        document.getElementById('perfil-genero').value = data.Genero || '';
-        document.getElementById('perfil-bio').value = data.Biografia || '';
-
+        
+        // Formatear fecha correctamente
         if (data.FechaDeNacimiento) {
             const fecha = new Date(data.FechaDeNacimiento);
             document.getElementById('perfil-fecha-nacimiento').value = fecha.toISOString().split('T')[0];
+        } else {
+            document.getElementById('perfil-fecha-nacimiento').value = '';
+        }
+        
+        document.getElementById('perfil-genero').value = data.Genero || '';
+        document.getElementById('perfil-bio').value = data.Biografia || '';
+
+        // Actualizar cabecera del perfil
+        updateUserInfo();
+        
+        // Formatear fecha de registro
+        if (data.MiembroDesde) {
+            const fechaRegistro = new Date(data.MiembroDesde);
+            document.getElementById('fecha-registro').textContent = fechaRegistro.getFullYear();
+        } else {
+            document.getElementById('fecha-registro').textContent = new Date().getFullYear();
         }
 
-        updateUserInfo();
         setupUserAvatar();
         updateProfileStats();
+        
+        console.log("✅ Perfil cargado exitosamente");
 
     } catch (err) {
-        console.error("❌ Error al cargar perfil:", err);
+        console.error('❌ Error al cargar perfil:', err);
     }
 }
 
-
-// ==================== PERFIL - GUARDAR ====================
+/* 👤---------- Guardar Perfil en la API ---------- 👤*/
 async function guardarPerfil() {
     try {
         const idUsuario = localStorage.getItem('idUsuario');
+        if (!idUsuario) {
+            alert('Error: No se encontró el ID de usuario');
+            return;
+        }
 
         const body = {
             idUsuario: parseInt(idUsuario),
@@ -4769,57 +4801,143 @@ async function guardarPerfil() {
             correoElectronico: document.getElementById('perfil-email').value,
             fechaDeNacimiento: document.getElementById('perfil-fecha-nacimiento').value,
             genero: document.getElementById('perfil-genero').value,
-            biografia: document.getElementById('perfil-bio').value
+            biografia: document.getElementById('perfil-bio').value,
+            contrasenaActual: document.getElementById('perfil-password-actual').value,
+            nuevaContrasena: document.getElementById('perfil-password-nueva').value,
+            confirmarNuevaContrasena: document.getElementById('perfil-password-confirmar').value
         };
 
-        await apiRequest('/api/perfil/guardar', { method: 'POST', body });
+        console.log("📤 Enviando datos:", body); // Para debug
 
+        const result = await apiRequest('/api/perfil/guardar', {
+            method: 'POST',
+            body: body
+        });
+
+        // Limpiar campos de contraseña
+        document.getElementById('perfil-password-actual').value = '';
+        document.getElementById('perfil-password-nueva').value = '';
+        document.getElementById('perfil-password-confirmar').value = '';
+
+        // Actualizar la información en la UI
         updateUserInfo();
         setupUserAvatar();
-
+        
         alert("Perfil actualizado correctamente ✔");
-
+        
     } catch (err) {
+        console.error('Error al guardar perfil:', err);
         alert('Error al guardar perfil: ' + err.message);
     }
 }
 
+/* 👤---------- Cargar Perfil Desde la API ---------- 👤*/
+async function cargarDatosPerfil() {
+    try {
+        // Asegurarnos de tener el idUsuario
+        const idUsuario = initializeUserId();
+        
+        if (!idUsuario) {
+            console.warn("❌ No hay idUsuario en localStorage - no se puede cargar perfil");
+            // Mostrar datos básicos del localStorage
+            updateUserInfo();
+            setupUserAvatar();
+            updateProfileStats();
+            return;
+        }
 
-// ==================== AUXILIARES ====================
-function initializeUserId() {
-    let id = localStorage.getItem('idUsuario');
-    if (!id) {
-        const user = JSON.parse(localStorage.getItem("user") || "{}");
-        id = user.IdUsuario || user.idUsuario;
-        if (id) localStorage.setItem('idUsuario', id);
+        console.log("📥 Cargando perfil para idUsuario:", idUsuario);
+
+        // Llamada al backend con manejo de errores mejorado
+        let data;
+        try {
+            data = await apiRequest(`/api/perfil/completo?idUsuario=${idUsuario}`);
+        } catch (apiError) {
+            console.warn("⚠️ No se pudo cargar perfil desde API, usando datos locales:", apiError);
+            // Si falla la API, usar datos del localStorage
+            updateUserInfo();
+            setupUserAvatar();
+            updateProfileStats();
+            return;
+        }
+        
+        console.log("📥 Datos del perfil recibidos:", data);
+
+        // Rellenar formulario
+        if (document.getElementById('perfil-nombre')) {
+            document.getElementById('perfil-nombre').value = data.NombreCompleto || '';
+        }
+        if (document.getElementById('perfil-email')) {
+            document.getElementById('perfil-email').value = data.CorreoElectronico || '';
+        }
+        
+        // Formatear fecha correctamente
+        if (document.getElementById('perfil-fecha-nacimiento')) {
+            if (data.FechaDeNacimiento) {
+                const fecha = new Date(data.FechaDeNacimiento);
+                document.getElementById('perfil-fecha-nacimiento').value = fecha.toISOString().split('T')[0];
+            } else {
+                document.getElementById('perfil-fecha-nacimiento').value = '';
+            }
+        }
+        
+        if (document.getElementById('perfil-genero')) {
+            document.getElementById('perfil-genero').value = data.Genero || '';
+        }
+        if (document.getElementById('perfil-bio')) {
+            document.getElementById('perfil-bio').value = data.Biografia || '';
+        }
+
+        // Actualizar cabecera del perfil
+        updateUserInfo();
+        
+        // Formatear fecha de registro
+        if (document.getElementById('fecha-registro')) {
+            if (data.MiembroDesde) {
+                const fechaRegistro = new Date(data.MiembroDesde);
+                document.getElementById('fecha-registro').textContent = fechaRegistro.getFullYear();
+            } else {
+                document.getElementById('fecha-registro').textContent = new Date().getFullYear();
+            }
+        }
+
+        setupUserAvatar();
+        updateProfileStats();
+        
+        console.log("✅ Perfil cargado exitosamente");
+
+    } catch (err) {
+        console.error('❌ Error al cargar perfil:', err);
+        // Fallback: mostrar datos básicos
+        updateUserInfo();
+        setupUserAvatar();
+        updateProfileStats();
     }
-    return id;
 }
 
+// ==================== ACTUALIZAR INFORMACIÓN DEL USUARIO ====================
 function updateUserInfo() {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    const nombre = localStorage.getItem("userName") ||
-                   user.nombre || user.Nombre || "Usuario";
+    try {
+        const user = JSON.parse(localStorage.getItem("user") || "{}");
+        const userName = localStorage.getItem("userName");
+        const userEmail = localStorage.getItem("userEmail");
+        
+        // Usar los valores disponibles (de localStorage o del objeto user)
+        const nombre = userName || user.nombre || user.Nombre || user.NombreCompleto || "Usuario";
+        const correo = userEmail || user.email || user.Correo || user.CorreoElectronico || "correo@ejemplo.com";
 
-    const correo = localStorage.getItem("userEmail") ||
-                   user.email || user.Correo || "correo@ejemplo.com";
+        // Actualizar en la cabecera del perfil
+        const nombreLabel = document.getElementById("nombre-usuario");
+        const emailLabel = document.getElementById("email-usuario");
 
-    document.getElementById("nombre-usuario").textContent = nombre;
-    document.getElementById("email-usuario").textContent = correo;
-}
+        if (nombreLabel) nombreLabel.textContent = nombre;
+        if (emailLabel) emailLabel.textContent = correo;
 
-function setupUserAvatar() {
-    const name = document.getElementById('nombre-usuario')?.textContent || 'U';
-    const avatar = document.getElementById('avatar-usuario');
-    const initials = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
-
-    avatar.innerHTML = initials;
-    avatar.style.backgroundColor = getRandomColor();
-}
-
-function getRandomColor() {
-    const colors = ['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD'];
-    return colors[Math.floor(Math.random()*colors.length)];
+        console.log("✅ Información de usuario actualizada:", { nombre, correo });
+        
+    } catch (error) {
+        console.error("❌ Error en updateUserInfo:", error);
+    }
 }
 // ==================== INICIALIZAR ID USUARIO ====================
 function initializeUserId() {
@@ -4964,6 +5082,49 @@ function updateUserInfo() {
     }
 }
 
+
+
+
+// Función para hacer requests a la API
+async function apiRequest(endpoint, options = {}) {
+    const baseUrl = 'http://localhost:3000'; // Ajusta según tu backend
+    const url = baseUrl + endpoint;
+    
+    const config = {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        ...options
+    };
+    
+    if (config.body && typeof config.body === 'object') {
+        config.body = JSON.stringify(config.body);
+    }
+    
+    console.log(`🌐 Haciendo request a: ${url}`, config);
+    
+    try {
+        const response = await fetch(url, config);
+        
+        if (!response.ok) {
+            // Si el endpoint no existe
+            if (response.status === 404) {
+                throw new Error('Endpoint no encontrado');
+            }
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Error en apiRequest:', error);
+        throw error;
+    }
+}
+
 /* ---------- loadUserData ---------- */
 async function loadUserData() {
     try {
@@ -5000,43 +5161,28 @@ function _getToken() {
   return localStorage.getItem('authToken') || localStorage.getItem('token') || null;
 }
 
-// API universal para emociones/retos/mascota, usando el mismo sistema que todo el frontend
+// Helper minimal API (usa tu server.js en localhost:3000)
 async function apiFetch(path, options = {}) {
-    const token = localStorage.getItem('authToken');
-
-    const finalUrl = `${API_BASE_URL}/api${path}`;
-
-    const config = {
-        method: options.method || "GET",
-        headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-    };
-
-    if (options.body) {
-        config.body = JSON.stringify(options.body);
-    }
-
-    console.log("📡 apiFetch →", finalUrl);
-
-    const resp = await fetch(finalUrl, config);
-    let data = null;
-
-    try {
-        data = await resp.json();
-    } catch (e) {
-        data = null;
-    }
-
-    if (!resp.ok) {
-        const msg = data?.error || data?.message || `HTTP ${resp.status}`;
-        throw new Error(msg);
-    }
-
-    return data;
+  const token = _getToken();
+  const headers = Object.assign({}, options.headers || {}, {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  });
+  const resp = await fetch(`http://localhost:3000/api${path}`, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  let payload = null;
+  try { payload = await resp.json(); } catch(e) { payload = null; }
+  if (!resp.ok) {
+    const msg = payload?.error || payload?.message || `HTTP ${resp.status}`;
+    const err = new Error(msg);
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
 }
-
 
 /* ---------------------------
    Guardar emoción con confirmación visual
@@ -5273,13 +5419,21 @@ async function cargarEmocionesGraficas() {
     }
 
     try {
-        // 🚀 Usar API universal (NO localhost)
-        const data = await apiRequest('/api/emociones/usuario');
+        const resp = await fetch("http://localhost:3000/api/emociones/usuario", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
 
-        // Si no hay emociones → limpiar
+        if (!resp.ok) {
+            console.error("Error al cargar emociones del usuario:", await resp.text());
+            limpiarEmocionesGraficas();
+            return;
+        }
+
+        const data = await resp.json();
+
+        // Si el usuario no tiene emociones → limpia
         if (!Array.isArray(data) || data.length === 0) {
             emociones = [];
-            limpiarEmocionesGraficas();
             return;
         }
 
@@ -5287,17 +5441,14 @@ async function cargarEmocionesGraficas() {
         emociones = data.map(e => ({
             tipo: (e.Nombre || e.nombre || e.Emocion || "").toLowerCase(),
             nota: e.Nota || "",
-            fecha: e.Fecha || e.FechaRegistro || ""
+            fecha: e.Fecha || ""
         }));
 
-        console.log("📊 Emociones para gráficas:", emociones);
-
     } catch (error) {
-        console.error("❌ Error en cargarEmocionesGraficas:", error);
+        console.error("Error al cargar emociones:", error);
         limpiarEmocionesGraficas();
     }
 }
-
 
 // =========================
 // CONFIGURACIÓN DE CANVAS 
@@ -5484,14 +5635,15 @@ function mostrarSeguimiento() {
 
     setTimeout(() => actualizarYMostrar("pastel"), 200);
 }
+
 // =====================================================
-// 🟦 RETOS - Cargar, Agregar, Actualizar y Eliminar
+// 🟦 RETOS - Cargar, Agregar y Marcar (Cumplido / Fallido)
 // =====================================================
 
 // 🔹 Cargar todos los retos del usuario
 async function cargarRetos() {
     try {
-        const data = await apiCall("/api/retos");  // usa API_BASE_URL automáticamente
+        const data = await apiCall("/api/retos");
         
         if (data && Array.isArray(data)) {
             renderRetos(data);
@@ -5506,7 +5658,6 @@ async function cargarRetos() {
     }
 }
 
-
 // 🔹 Agregar un nuevo reto
 async function agregarReto() {
     const titulo = document.getElementById("nuevo-reto").value.trim();
@@ -5515,12 +5666,12 @@ async function agregarReto() {
     try {
         const data = await apiCall("/api/retos", {
             method: "POST",
-            body: { Titulo: titulo }   // ❗ IMPORTANTE: NO JSON.stringify
+            body: JSON.stringify({ Titulo: titulo })
         });
 
         if (data && data.IdReto) {
             document.getElementById("nuevo-reto").value = "";
-            cargarRetos();
+            cargarRetos(); // recargar lista
         } else {
             console.error("❌ Error: No se pudo crear el reto", data);
         }
@@ -5530,13 +5681,12 @@ async function agregarReto() {
     }
 }
 
-
-// 🔹 Marcar como cumplido o fallido
+// 🔹 Marcar como cumplido (true) o fallido (false)
 async function marcarReto(id, cumplido) {
     try {
         const data = await apiCall(`/api/retos/${id}`, {
             method: "PUT",
-            body: { Cumplido: cumplido }
+            body: JSON.stringify({ Cumplido: cumplido })
         });
 
         if (data && data.IdReto) {
@@ -5550,8 +5700,7 @@ async function marcarReto(id, cumplido) {
     }
 }
 
-
-// 🔹 Eliminar reto
+// 🔹 Eliminar reto (opcional)
 async function eliminarReto(id) {
     if (!confirm("¿Estás seguro de que quieres eliminar este reto?")) return;
 
@@ -5571,7 +5720,6 @@ async function eliminarReto(id) {
     }
 }
 
-
 // =====================================================
 // 🔹 Renderizar Retos en el HTML
 // =====================================================
@@ -5585,7 +5733,9 @@ function renderRetos(retos) {
 
     cont.innerHTML = "";
 
+    // ✅ VERIFICAR que retos sea un array
     if (!Array.isArray(retos)) {
+        console.error("❌ Error: retos no es un array", retos);
         cont.innerHTML = `<p class="error">Error al cargar los retos</p>`;
         return;
     }
@@ -5604,26 +5754,37 @@ function renderRetos(retos) {
         const div = document.createElement("div");
         div.classList.add("reto-item");
         
-        if (r.Estado === 'Cumplido') div.classList.add('completado');
-        if (r.Estado === 'Fallido') div.classList.add('fallido');
+        // Agregar clase según el estado
+        if (r.Estado === 'Cumplido') {
+            div.classList.add('completado');
+        } else if (r.Estado === 'Fallido') {
+            div.classList.add('fallido');
+        }
 
         div.innerHTML = `
             <span class="reto-titulo ${r.Estado === 'Cumplido' ? 'tachado' : ''}">
                 ${r.Titulo}
             </span>
-
+            
             <div class="reto-fecha">
                 ${new Date(r.FechaCreacion).toLocaleDateString()}
             </div>
 
             <div class="reto-acciones">
                 ${r.Estado === 'Pendiente' ? `
-                    <button class="btn-check" onclick="marcarReto(${r.IdReto}, true)">✔</button>
-                    <button class="btn-fail" onclick="marcarReto(${r.IdReto}, false)">✖</button>
+                    <button class="btn-check" onclick="marcarReto(${r.IdReto}, true)" title="Marcar como cumplido">
+                        ✔
+                    </button>
+                    <button class="btn-fail" onclick="marcarReto(${r.IdReto}, false)" title="Marcar como fallido">
+                        ✖
+                    </button>
                 ` : ''}
-                <button class="btn-delete" onclick="eliminarReto(${r.IdReto})">🗑️</button>
+                
+                <button class="btn-delete" onclick="eliminarReto(${r.IdReto})" title="Eliminar reto">
+                    🗑️
+                </button>
             </div>
-
+            
             ${r.Estado !== 'Pendiente' ? `
                 <div class="reto-estado ${r.Estado === 'Cumplido' ? 'estado-cumplido' : 'estado-fallido'}">
                     ${r.Estado} ${r.FechaCumplido ? ' - ' + new Date(r.FechaCumplido).toLocaleDateString() : ''}
@@ -5635,25 +5796,36 @@ function renderRetos(retos) {
     });
 }
 
-
 // =====================================================
-// 🔹 INICIALIZAR RETOS
+// 🔹 INICIALIZACIÓN DE RETOS (INDEPENDIENTE)
 // =====================================================
 function inicializarRetos() {
     console.log("🎯 Inicializando módulo de retos...");
-
-    cargarRetos(); // carga al abrir
-
-    document.getElementById("btn-agregar-reto")?.addEventListener("click", agregarReto);
-
-    document.getElementById("nuevo-reto")?.addEventListener("keypress", function(e) {
-        if (e.key === "Enter") agregarReto();
-    });
+    
+    // Cargar retos al iniciar
+    cargarRetos();
+    
+    // Agregar event listener al botón de agregar
+    const btnAgregar = document.getElementById("btn-agregar-reto");
+    const inputReto = document.getElementById("nuevo-reto");
+    
+    if (btnAgregar) {
+        btnAgregar.addEventListener("click", agregarReto);
+    }
+    
+    if (inputReto) {
+        inputReto.addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                agregarReto();
+            }
+        });
+    }
 }
 
-
-// 🔹 Ejecutar al cargar página
-document.addEventListener('DOMContentLoaded', inicializarRetos);
+// 🔹 Inicializar retos cuando se cargue la página
+document.addEventListener('DOMContentLoaded', function() {
+    inicializarRetos();
+});
 
 
 
@@ -5679,53 +5851,41 @@ async function cargarCalendarioDesdeBD() {
 
     try {
         console.log('🔄 Cargando emociones para calendario...');
-
-        // 🔥 INTENTA PRIMERO apiFetch
+        
+        // 🔥 MÚLTIPLES FALLBACKS: intenta primero con apiFetch, luego con apiRequest
         let data;
         try {
-            data = await apiFetch('/emociones/usuario'); 
+            data = await apiFetch('/emociones/usuario');
         } catch (error) {
             console.warn('❌ apiFetch falló, intentando con apiRequest...');
-            data = await apiRequest('/emociones/usuario'); 
+            data = await apiRequest('/emociones/usuario');
         }
 
         console.log('📊 Datos recibidos para calendario:', data);
 
-        // 🔥 NORMALIZACIÓN DE DATOS
+        // 🔥 SINCROINZACIÓN ROBUSTA - maneja múltiples formatos de datos
         emocion = (Array.isArray(data) ? data : []).map(r => ({
-            tipo: (r.Nombre || r.nombre || r.Emocion || r.tipo || '')
-                .toString().toLowerCase().trim(),
-
-            notas: (r.Nota || r.nota || r.Notas || r.notas || '')
-                .toString().trim(),
-
-            fecha: (r.Fecha || r.FechaRegistro || r.fecha || r.fechaRegistro ||
-                new Date().toISOString().split('T')[0]),
-
-            hora: (
-                r.Hora ||
-                r.hora ||
-                (r.FechaRegistro ? new Date(r.FechaRegistro).toLocaleTimeString() : '') ||
-                new Date().toLocaleTimeString()
-            )
+            tipo: (r.Nombre || r.nombre || r.Emocion || r.tipo || '').toString().toLowerCase().trim(),
+            notas: (r.Nota || r.nota || r.Notas || r.notas || '').toString().trim(),
+            fecha: (r.Fecha || r.FechaRegistro || r.fecha || r.fechaRegistro || new Date().toISOString().split('T')[0]),
+            hora: (r.Hora || r.hora || (r.FechaRegistro ? new Date(r.FechaRegistro).toLocaleTimeString() : '') || new Date().toLocaleTimeString())
         }));
 
         console.log('📈 Total emociones cargadas para calendario:', emocion.length);
 
-        // 🔥 BACKUP LOCAL
+        // 🔥 BACKUP AUTOMÁTICO
         try {
             localStorage.setItem('emocionesBackup', JSON.stringify(emocion));
         } catch (e) {
-            console.warn('⚠️ No se pudo hacer backup de emociones');
+            console.warn('No se pudo hacer backup de emociones');
         }
 
-        // 🔥 GENERAR CALENDARIO
+        // 🔥 GENERAR CALENDARIO INMEDIATAMENTE
         generarCalendario(window.mesActual, window.añoActual);
 
     } catch (err) {
         console.error('❌ Error cargando emociones para calendario:', err);
-
-        // 🔥 FALLBACK AUTOMÁTICO
+        // 🔥 FALLBACK: intenta cargar desde localStorage si todo falla
         try {
             const backupData = localStorage.getItem('emocionesBackup');
             if (backupData) {
@@ -5740,7 +5900,6 @@ async function cargarCalendarioDesdeBD() {
         }
     }
 }
-
 
 // ===========================================
 // FORMATEAR FECHA / HORA - VERSIÓN ROBUSTA
@@ -6062,8 +6221,8 @@ function iniciarEjercicio(tipo) {
                 </div>
             `;
             break;
-
-        case 'gratitud':  
+            
+         case 'gratitud':  // NUEVO CASO
             container.innerHTML = `
                 <div class="exercise-active">
                     <h3>🙏 Diario de Gratitud</h3>
@@ -6072,15 +6231,15 @@ function iniciarEjercicio(tipo) {
                     <div class="gratitud-form">
                         <div class="gratitud-item">
                             <label>1. Estoy agradecido por:</label>
-                            <textarea id="gratitud1" rows="2"></textarea>
+                            <textarea id="gratitud1" placeholder="Ej: Mi familia, mi salud..." rows="2"></textarea>
                         </div>
                         <div class="gratitud-item">
                             <label>2. Estoy agradecido por:</label>
-                            <textarea id="gratitud2" rows="2"></textarea>
+                            <textarea id="gratitud2" placeholder="Ej: Mi trabajo, la naturaleza..." rows="2"></textarea>
                         </div>
                         <div class="gratitud-item">
                             <label>3. Estoy agradecido por:</label>
-                            <textarea id="gratitud3" rows="2"></textarea>
+                            <textarea id="gratitud3" placeholder="Ej: Las pequeñas cosas del día..." rows="2"></textarea>
                         </div>
                     </div>
                     
@@ -6090,7 +6249,7 @@ function iniciarEjercicio(tipo) {
                 </div>
             `;
             break;
-
+            
         case 'mindfulness':
             container.innerHTML = `
                 <div class="exercise-active">
@@ -6115,41 +6274,80 @@ async function completarEjercicio(tipo) {
     try {
         console.log('🚀 Completando ejercicio:', tipo);
         
+        // Verificar autenticación
         const token = localStorage.getItem('authToken');
         if (!token) {
-            alert('❌ Debes iniciar sesión.');
+            alert('❌ Error: No estás autenticado. Inicia sesión nuevamente.');
             return;
         }
 
-        // ID del ejercicio
+        // Obtener ID del ejercicio
         const idEjercicio = ejerciciosMap[tipo];
         if (!idEjercicio) {
-            alert('❌ Tipo de ejercicio inválido');
+            alert('❌ Error: Tipo de ejercicio no válido');
             return;
         }
 
-        console.log('📤 Enviando a /api/ejercicios/completar');
+        console.log('📤 Enviando a /api/ejercicios/completar:', { idEjercicio });
 
-        // 🔥 RUTA CORREGIDA → usando apiFetch()
-        const result = await apiFetch('/ejercicios/completar', {
+        // Llamar al endpoint del backend
+        const response = await fetch('http://localhost:3000/api/ejercicios/completar', {
             method: 'POST',
-            body: { idEjercicio }
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                idEjercicio: idEjercicio 
+            })
         });
 
+        // Verificar respuesta
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error ${response.status}`);
+        }
+
+        // Procesar respuesta exitosa
+        const result = await response.json();
         console.log('✅ Ejercicio guardado:', result);
 
-        alert(`🎉 ¡Ejercicio de ${tipo} completado!\nGanaste: ${result.puntosGanados} puntos`);
-
+        // Mostrar éxito al usuario
+        alert(`🎉 ¡Ejercicio de ${tipo} completado!\n\nGanaste: ${result.puntosGanados} puntos\nID de sesión: ${result.idSesion}`);
+        
+        // Ocultar interfaz de ejercicio
         document.getElementById('ejercicio-activo').classList.add('hidden');
-
+        
+        // Actualizar estadísticas locales
         const ejerciciosRealizados = parseInt(localStorage.getItem('ejerciciosRealizados') || '0') + 1;
-        localStorage.setItem('ejerciciosRealizados', ejerciciosRealizados);
+        localStorage.setItem('ejerciciosRealizados', ejerciciosRealizados.toString());
+        
+        console.log('📊 Total ejercicios realizados:', ejerciciosRealizados);
 
-        if (typeof updateProfileStats === 'function') updateProfileStats();
+        // Actualizar UI si existe la función
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
+        }
 
     } catch (error) {
         console.error('💥 Error completando ejercicio:', error);
-        alert('❌ Error: ' + error.message);
+        
+        // Manejar errores específicos
+        let mensajeError = 'Error al guardar el ejercicio';
+        
+        if (error.message.includes('Failed to fetch')) {
+            mensajeError = '❌ No se pudo conectar con el servidor. Verifica que el backend esté ejecutándose.';
+        } else if (error.message.includes('401')) {
+            mensajeError = '❌ Tu sesión ha expirado. Por favor inicia sesión nuevamente.';
+        } else if (error.message.includes('404')) {
+            mensajeError = '❌ El servidor no encontró el endpoint. Verifica la ruta.';
+        } else if (error.message.includes('500')) {
+            mensajeError = '❌ Error interno del servidor. Intenta nuevamente.';
+        } else {
+            mensajeError = '❌ ' + error.message;
+        }
+        
+        alert(mensajeError);
     }
 }
 
@@ -6159,44 +6357,83 @@ async function completarEjercicio(tipo) {
 async function guardarDiarioGratitud() {
     try {
         console.log('🚀 Guardando diario de gratitud...');
-
+        
+        // Obtener los valores del formulario
         const gratitud1 = document.getElementById('gratitud1').value.trim();
         const gratitud2 = document.getElementById('gratitud2').value.trim();
         const gratitud3 = document.getElementById('gratitud3').value.trim();
-
+        
+        // Validar que todos los campos estén completos
         if (!gratitud1 || !gratitud2 || !gratitud3) {
-            alert('❌ Completa las 3 frases.');
+            alert('❌ Por favor completa las 3 cosas por las que estás agradecido');
             return;
         }
 
+        // Verificar autenticación
         const token = localStorage.getItem('authToken');
         if (!token) {
-            alert('❌ Debes iniciar sesión.');
+            alert('❌ Error: No estás autenticado. Inicia sesión nuevamente.');
             return;
         }
 
         console.log('📤 Enviando diario a /api/ejercicios/gratitud');
 
-        // 🔥 RUTA CORREGIDA → usando apiFetch()
-        const result = await apiFetch('/ejercicios/gratitud', {
+        // Llamar al nuevo endpoint para gratitud
+        const response = await fetch('http://localhost:3000/api/ejercicios/gratitud', {
             method: 'POST',
-            body: { gratitud1, gratitud2, gratitud3 }
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                gratitud1: gratitud1,
+                gratitud2: gratitud2, 
+                gratitud3: gratitud3
+            })
         });
 
-        console.log('✅ Diario guardado:', result);
+        // Verificar respuesta
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Error ${response.status}`);
+        }
 
-        alert(`🎉 ¡Diario guardado!\nGanaste: ${result.puntosGanados} puntos`);
+        // Procesar respuesta exitosa
+        const result = await response.json();
+        console.log('✅ Diario de gratitud guardado:', result);
 
+        // Mostrar éxito al usuario
+        alert(`🎉 ¡Diario de gratitud guardado!\n\nGanaste: ${result.puntosGanados} puntos`);
+        
+        // Ocultar interfaz de ejercicio
         document.getElementById('ejercicio-activo').classList.add('hidden');
-
+        
+        // Actualizar estadísticas locales
         const ejerciciosRealizados = parseInt(localStorage.getItem('ejerciciosRealizados') || '0') + 1;
-        localStorage.setItem('ejerciciosRealizados', ejerciciosRealizados);
+        localStorage.setItem('ejerciciosRealizados', ejerciciosRealizados.toString());
+        
+        console.log('📊 Total ejercicios realizados:', ejerciciosRealizados);
 
-        if (typeof updateProfileStats === 'function') updateProfileStats();
+        // Actualizar UI si existe la función
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
+        }
 
     } catch (error) {
         console.error('💥 Error guardando diario:', error);
-        alert('❌ Error: ' + error.message);
+        
+        // Manejar errores específicos
+        let mensajeError = 'Error al guardar el diario';
+        
+        if (error.message.includes('Failed to fetch')) {
+            mensajeError = '❌ No se pudo conectar con el servidor. Verifica que el backend esté ejecutándose.';
+        } else if (error.message.includes('401')) {
+            mensajeError = '❌ Tu sesión ha expirado. Por favor inicia sesión nuevamente.';
+        } else {
+            mensajeError = '❌ ' + error.message;
+        }
+        
+        alert(mensajeError);
     }
 }
 
@@ -6205,9 +6442,73 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Módulo de ejercicios cargado');
     console.log('🔍 Ejercicios mapeados:', ejerciciosMap);
 });
-
+    
 
     
+    // =============================================
+    // RESPIRACIÓN DIARIA
+    // =============================================
+
+    let respiracionInterval;
+    let respiracionActiva = false;
+    let fase = 0; // 0: inhalar, 1: retener, 2: exhalar
+
+    function iniciarRespiracion() {
+        if (respiracionActiva) return;
+        
+        respiracionActiva = true;
+        document.getElementById('btn-detener').classList.remove('hidden');
+        
+        const circulo = document.getElementById('circulo-respiracion');
+        const instruccion = document.getElementById('instruccion-respiracion');
+        
+        respiracionInterval = setInterval(() => {
+            switch(fase) {
+                case 0: // Inhalar
+                    circulo.textContent = 'INHALA';
+                    circulo.style.transform = 'scale(1.2)';
+                    instruccion.textContent = 'Inhala profundamente por la nariz (4 segundos)';
+                    setTimeout(() => fase = 1, 4000);
+                    break;
+                case 1: // Retener
+                    circulo.textContent = 'RETÉN';
+                    instruccion.textContent = 'Retén la respiración (4 segundos)';
+                    setTimeout(() => fase = 2, 4000);
+                    break;
+                case 2: // Exhalar
+                    circulo.textContent = 'EXHALA';
+                    circulo.style.transform = 'scale(1)';
+                    instruccion.textContent = 'Exhala lentamente por la boca (6 segundos)';
+                    setTimeout(() => fase = 0, 6000);
+                    break;
+            }
+            fase = (fase + 1) % 3;
+        }, 14000); // Ciclo completo: 4 + 4 + 6 = 14 segundos
+    }
+
+    function detenerRespiracion() {
+        respiracionActiva = false;
+        clearInterval(respiracionInterval);
+        document.getElementById('btn-detener').classList.add('hidden');
+        
+        const circulo = document.getElementById('circulo-respiracion');
+        const instruccion = document.getElementById('instruccion-respiracion');
+        
+        circulo.textContent = 'INHALA';
+        circulo.style.transform = 'scale(1)';
+        instruccion.textContent = 'Inhala profundamente por la nariz';
+        
+        // Registrar sesión completada
+        const sesiones = parseInt(localStorage.getItem('sesionesRespiracion') || '0') + 1;
+        localStorage.setItem('sesionesRespiracion', sesiones.toString());
+        document.getElementById('sesiones-completadas').textContent = sesiones;
+        
+        // Actualizar días consecutivos (simulado)
+        const dias = parseInt(localStorage.getItem('diasConsecutivos') || '0') + 1;
+        localStorage.setItem('diasConsecutivos', dias.toString());
+        document.getElementById('dias-consecutivos').textContent = dias;
+    }
+
   
 // =============================================
 // MASCOTA VIRTUAL - CONEXIÓN COMPLETA CON BASE DE DATOS
