@@ -4483,6 +4483,32 @@ stat-card {
 <head>
     
     <script>
+
+
+// ==================== LOAD USER DATA (CORREGIDA) ====================
+async function loadUserData() {
+    try {
+        console.log("📥 Cargando datos del usuario...");
+        
+        // 1. Actualizar información básica
+        updateUserInfo();
+        setupUserAvatar();
+        
+        // 2. Cargar perfil (si la función existe)
+        if (typeof cargarDatosPerfil === 'function') {
+            await cargarDatosPerfil();
+        }
+        
+        // 3. Cargar estadísticas (si la función existe)
+        if (typeof cargarEstadisticasPerfil === 'function') {
+            await cargarEstadisticasPerfil();
+        }
+        
+        console.log("✅ Datos del usuario cargados");
+    } catch (error) {
+        console.error("❌ Error en loadUserData:", error);
+    }
+}
    // ==================== FUNCIONES FALTANTES ====================
 
 // 1. initializeUserId (FALTA ESTA)
@@ -5089,93 +5115,83 @@ function logout() {
     console.log("👋 Sesión cerrada exitosamente");
 }
 
-// ==================== CARGAR PERFIL DESDE LA API (SQLite) ====================
+// ==================== CARGAR PERFIL (VERSIÓN SIN ENDPOINT) ====================
 async function cargarDatosPerfil() {
     try {
         console.log("📥 Cargando datos del perfil...");
         
-        // Asegurarnos de tener el idUsuario
         const idUsuario = initializeUserId();
         
         if (!idUsuario) {
-            console.warn("❌ No hay idUsuario en localStorage - no se puede cargar perfil");
-            // Mostrar datos básicos del localStorage
+            console.warn("❌ No hay idUsuario");
             updateUserInfo();
             setupUserAvatar();
-            if (typeof updateProfileStats === 'function') updateProfileStats();
             return;
         }
 
-        console.log("🔍 Buscando perfil para idUsuario:", idUsuario);
+        console.log("🔍 ID de usuario:", idUsuario);
 
-        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
-        let data;
+        // INTENTAR cargar perfil desde API
+        let data = null;
         try {
             data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
+            console.log("✅ Datos del perfil recibidos:", data);
         } catch (apiError) {
-            console.warn("⚠️ No se pudo cargar perfil desde API:", apiError);
-            // Si falla la API, usar datos del localStorage
-            updateUserInfo();
-            setupUserAvatar();
-            if (typeof updateProfileStats === 'function') updateProfileStats();
-            return;
-        }
-        
-        console.log("✅ Datos del perfil recibidos:", data);
-
-        // Rellenar formulario si los elementos existen
-        const perfilNombre = document.getElementById('perfil-nombre');
-        const perfilEmail = document.getElementById('perfil-email');
-        const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
-        const perfilGenero = document.getElementById('perfil-genero');
-        const perfilBio = document.getElementById('perfil-bio');
-        
-        if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
-        if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
-        
-        // Formatear fecha correctamente
-        if (perfilFecha && data.FechaDeNacimiento) {
-            const fecha = new Date(data.FechaDeNacimiento);
-            perfilFecha.value = fecha.toISOString().split('T')[0];
-        }
-        
-        if (perfilGenero) perfilGenero.value = data.Genero || '';
-        if (perfilBio) perfilBio.value = data.Biografia || '';
-
-        // Guardar datos en localStorage para usar después
-        if (data.NombreCompleto) {
-            localStorage.setItem('userName', data.NombreCompleto);
-        }
-        if (data.CorreoElectronico) {
-            localStorage.setItem('userEmail', data.CorreoElectronico);
+            console.warn("⚠️ No se pudo cargar perfil desde API:", apiError.message);
+            // Continuar con datos locales
         }
 
-        // Actualizar cabecera del perfil
+        // Si no hay datos de la API, usar localStorage
+        if (!data) {
+            console.log("📦 Usando datos locales de localStorage");
+            
+            const userName = localStorage.getItem('userName') || '';
+            const userEmail = localStorage.getItem('userEmail') || '';
+            
+            // Rellenar formulario con datos locales
+            const perfilNombre = document.getElementById('perfil-nombre');
+            const perfilEmail = document.getElementById('perfil-email');
+            
+            if (perfilNombre && userName) perfilNombre.value = userName;
+            if (perfilEmail && userEmail) perfilEmail.value = userEmail;
+            
+        } else {
+            // Rellenar formulario con datos de API
+            const perfilNombre = document.getElementById('perfil-nombre');
+            const perfilEmail = document.getElementById('perfil-email');
+            const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
+            const perfilGenero = document.getElementById('perfil-genero');
+            const perfilBio = document.getElementById('perfil-bio');
+            
+            if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
+            if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
+            
+            if (perfilFecha && data.FechaDeNacimiento) {
+                const fecha = new Date(data.FechaDeNacimiento);
+                perfilFecha.value = fecha.toISOString().split('T')[0];
+            }
+            
+            if (perfilGenero) perfilGenero.value = data.Genero || '';
+            if (perfilBio) perfilBio.value = data.Biografia || '';
+            
+            // Guardar en localStorage
+            if (data.NombreCompleto) localStorage.setItem('userName', data.NombreCompleto);
+            if (data.CorreoElectronico) localStorage.setItem('userEmail', data.CorreoElectronico);
+        }
+
+        // Siempre actualizar UI
         updateUserInfo();
         setupUserAvatar();
         
-        // Formatear fecha de registro si existe el elemento
-        const fechaRegistroElem = document.getElementById('fecha-registro');
-        if (fechaRegistroElem) {
-            if (data.MiembroDesde) {
-                const fechaRegistro = new Date(data.MiembroDesde);
-                fechaRegistroElem.textContent = fechaRegistro.getFullYear();
-            } else {
-                fechaRegistroElem.textContent = new Date().getFullYear();
-            }
-        }
-
-        // Intentar cargar estadísticas desde el endpoint
+        // Cargar estadísticas
         await cargarEstadisticasPerfil();
         
         console.log("✅ Perfil cargado exitosamente");
 
     } catch (err) {
         console.error('❌ Error al cargar perfil:', err);
-        // Fallback: mostrar datos básicos
         updateUserInfo();
         setupUserAvatar();
-        if (typeof updateProfileStats === 'function') updateProfileStats();
     }
 }
 
