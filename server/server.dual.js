@@ -1,4 +1,4 @@
-// server.js - DUAL DB: SQL Server (local) + SQLite (producción)
+// server.js - DUAL DB: SQL Server (local) + SQLite (producción) - VERSIÓN CORREGIDA
 const express = require('express');
 const cors = require('cors');
 const sql = require('mssql');
@@ -86,21 +86,56 @@ async function connectSqlServer() {
 }
 
 // ------------------------------------------------------
-//  BASE DE DATOS: SQLITE (PRODUCCIÓN / CELULAR)
+//  BASE DE DATOS: SQLITE (PRODUCCIÓN / CELULAR) - VERSIÓN MEJORADA
 // ------------------------------------------------------
 function initSqlite() {
-  const sqlite3 = require('sqlite3').verbose();
-  const dbPath = path.join(__dirname, 'database.db');
-
-  sqlite = new sqlite3.Database(dbPath, (err) => {
-    if (err) return console.error('❌ SQLite error:', err.message);
-    console.log('🟢 SQLite inicializado en', dbPath);
-  });
+  try {
+    const sqlite3 = require('sqlite3').verbose();
+    
+    console.log("🔍 INICIANDO SQLITE...");
+    
+    // Ruta compatible con Railway y local
+    let dbPath;
+    
+    if (IS_PRODUCTION) {
+      // En Railway, usar /tmp (siempre funciona)
+      dbPath = '/tmp/mindweb.db';
+      console.log("🚀 MODO PRODUCCIÓN: Usando /tmp/mindweb.db");
+    } else {
+      // En local, usar directorio actual
+      dbPath = path.join(__dirname, 'database.db');
+      console.log("💻 MODO LOCAL: Usando", dbPath);
+    }
+    
+    // Crear directorio si no existe
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+      console.log(`📁 Creando directorio: ${dir}`);
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    sqlite = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+      if (err) {
+        console.error('❌ ERROR SQLite:', err.message);
+        // Intentar alternativa
+        try {
+          fs.writeFileSync(dbPath, '');
+          sqlite = new sqlite3.Database(dbPath);
+          console.log('✅ SQLite creado manualmente');
+        } catch (fileErr) {
+          console.error('❌ Error crítico SQLite:', fileErr.message);
+          sqlite = null;
+        }
+      } else {
+        console.log(`✅ SQLite conectado en: ${dbPath}`);
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ ERROR en initSqlite:', error.message);
+    sqlite = null;
+  }
 }
-
-// INICIAR DB
-if (USE_SQLITE) initSqlite();
-else connectSqlServer();
 
 // ------------------------------------------------------
 //  INICIALIZAR TODAS LAS TABLAS SQLITE
@@ -234,49 +269,52 @@ async function inicializarTablasSQLite() {
     console.log("✅ Tabla 'Retos' lista");
     
     // 8. Tabla Mascotas (VERSIÓN CORREGIDA)
-await sqliteRun(`
-  CREATE TABLE IF NOT EXISTS Mascotas (
-    IdMascota INTEGER PRIMARY KEY AUTOINCREMENT,
-    Nombre TEXT,
-    Tipo TEXT,
-    Imagen TEXT
-  )
-`);
-console.log("✅ Tabla 'Mascotas' lista");
-
-// Insertar mascotas base (VERSIÓN CORREGIDA)
-const countMascotas = await sqliteGet('SELECT COUNT(*) as total FROM Mascotas');
-if (countMascotas.total === 0) {
-  await sqliteRun(`
-    INSERT INTO Mascotas (Nombre, Tipo, Imagen) VALUES 
-    ('Axolote', 'axolote', 'imagvideos/axolo.png'),
-    ('Caracol', 'caracol', 'imagvideos/caracoli.png'),
-    ('Dinosaurio', 'dinosaurio', 'imagvideos/dinosau.png')
-  `);
-  console.log("✅ Mascotas base insertadas (axolote, caracol, dinosaurio)");
-}
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS Mascotas (
+        IdMascota INTEGER PRIMARY KEY AUTOINCREMENT,
+        Nombre TEXT,
+        Tipo TEXT,
+        Imagen TEXT
+      )
+    `);
+    console.log("✅ Tabla 'Mascotas' lista");
+    
+    // Insertar mascotas base (VERSIÓN CORREGIDA)
+    const countMascotas = await sqliteGet('SELECT COUNT(*) as total FROM Mascotas');
+    if (countMascotas.total === 0) {
+      await sqliteRun(`
+        INSERT INTO Mascotas (Nombre, Tipo, Imagen) VALUES 
+        ('Axolote', 'axolote', 'imagvideos/axolo.png'),
+        ('Caracol', 'caracol', 'imagvideos/caracoli.png'),
+        ('Dinosaurio', 'dinosaurio', 'imagvideos/dinosau.png')
+      `);
+      console.log("✅ Mascotas base insertadas (axolote, caracol, dinosaurio)");
+    }
     
     // 9. Tabla UsuarioMascota (VERSIÓN CORREGIDA)
-await sqliteRun(`
-  CREATE TABLE IF NOT EXISTS UsuarioMascota (
-    IdUsuarioMascota INTEGER PRIMARY KEY AUTOINCREMENT,
-    IdUsuario INTEGER,
-    IdMascota INTEGER,
-    Tipo TEXT,
-    FechaAdopcion TEXT DEFAULT (datetime('now')),
-    Activa INTEGER DEFAULT 0,
-    Nivel INTEGER DEFAULT 1,
-    Experiencia INTEGER DEFAULT 0,
-    ExperienciaNecesaria INTEGER DEFAULT 100,
-    Felicidad INTEGER DEFAULT 100,
-    Energia INTEGER DEFAULT 100,
-    Hambre INTEGER DEFAULT 0,
-    Monedas INTEGER DEFAULT 50,
-    Estado TEXT DEFAULT 'Feliz'
-  )
-`);
-console.log("✅ Tabla 'UsuarioMascota' lista");
-   
+    await sqliteRun(`
+      CREATE TABLE IF NOT EXISTS UsuarioMascota (
+        IdUsuarioMascota INTEGER PRIMARY KEY AUTOINCREMENT,
+        IdUsuario INTEGER,
+        IdMascota INTEGER,
+        Tipo TEXT,
+        FechaAdopcion TEXT DEFAULT (datetime('now')),
+        Activa INTEGER DEFAULT 0,
+        Nivel INTEGER DEFAULT 1,
+        Experiencia INTEGER DEFAULT 0,
+        ExperienciaNecesaria INTEGER DEFAULT 100,
+        Felicidad INTEGER DEFAULT 100,
+        Energia INTEGER DEFAULT 100,
+        Hambre INTEGER DEFAULT 0,
+        Monedas INTEGER DEFAULT 50,
+        Estado TEXT DEFAULT 'Feliz'
+      )
+    `);
+    console.log("✅ Tabla 'UsuarioMascota' lista");
+    
+    // Verificar todas las tablas creadas
+    const todasTablas = await sqliteAll("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+    console.log("📊 RESUMEN - Tablas creadas:", todasTablas.map(t => t.name));
     
     console.log("🎉 TODAS LAS TABLAS SQLITE INICIALIZADAS CORRECTAMENTE");
     
@@ -284,6 +322,42 @@ console.log("✅ Tabla 'UsuarioMascota' lista");
     console.error("❌ ERROR inicializando tablas SQLite:");
     console.error("❌ Mensaje:", error.message);
     console.error("❌ Stack:", error.stack);
+  }
+}
+
+// ------------------------------------------------------
+//  INICIAR BASE DE DATOS
+// ------------------------------------------------------
+async function iniciarBaseDeDatos() {
+  console.log("🚀 INICIANDO BASE DE DATOS...");
+  console.log("🔧 Modo:", IS_PRODUCTION ? "PRODUCCIÓN (Railway)" : "LOCAL");
+  console.log("🗄️  Usando:", USE_SQLITE ? "SQLite" : "SQL Server");
+  
+  if (USE_SQLITE) {
+    console.log("🔄 Iniciando SQLite...");
+    initSqlite();
+    
+    // Esperar que SQLite se inicialice, luego crear tablas
+    setTimeout(async () => {
+      if (sqlite) {
+        console.log("🔧 Inicializando tablas SQLite...");
+        await inicializarTablasSQLite();
+        
+        // Test final
+        try {
+          const test = await sqliteGet('SELECT 1 as test');
+          console.log("🧪 Test SQLite exitoso:", test);
+        } catch (testErr) {
+          console.error("❌ Test SQLite falló:", testErr.message);
+        }
+      } else {
+        console.error("❌ SQLite no se inicializó - sqlite es null");
+      }
+    }, 1500);
+    
+  } else {
+    console.log("🔄 Iniciando SQL Server...");
+    await connectSqlServer();
   }
 }
 
@@ -322,6 +396,11 @@ function sqliteRun(q, params = []) {
 }
 
 // ------------------------------------------------------
+//  EJECUTAR INICIALIZACIÓN DE BASE DE DATOS
+// ------------------------------------------------------
+iniciarBaseDeDatos();
+
+// ------------------------------------------------------
 //  AUTH: REGISTER
 // ------------------------------------------------------
 app.post('/api/auth/register', async (req, res) => {
@@ -339,18 +418,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     // ------------------------- SQLITE -------------------------
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Usuarios (
-          IdUsuario INTEGER PRIMARY KEY AUTOINCREMENT,
-          Nombre TEXT,
-          Correo TEXT UNIQUE,
-          Contrasena TEXT,
-          Nivel INTEGER,
-          Puntos INTEGER,
-          FechaRegistro TEXT
-        )
-      `);
-
+      // SOLO LÓGICA DE NEGOCIO - NO CREAR TABLAS
       const exists = await sqliteGet('SELECT IdUsuario FROM Usuarios WHERE Correo = ?', [correoFinal]);
       if (exists) return res.status(400).json({ error: 'El usuario ya existe.' });
 
@@ -369,18 +437,7 @@ app.post('/api/auth/register', async (req, res) => {
         FechaRegistro: new Date().toISOString()
       };
 
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Perfil (
-          IdPerfil INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          NombreCompleto TEXT,
-          CorreoElectronico TEXT,
-          FechaDeNacimiento TEXT,
-          Genero TEXT,
-          Biografia TEXT
-        )
-      `);
-
+      // Insertar perfil si no existe
       await sqliteRun('INSERT OR IGNORE INTO Perfil (IdUsuario) VALUES (?)', [newUser.IdUsuario]);
 
       const token = jwt.sign({ userId: newUser.IdUsuario, email: newUser.Correo }, JWT_SECRET, { expiresIn: '30d' });
@@ -431,18 +488,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // ------------------------- SQLITE -------------------------
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Usuarios (
-          IdUsuario INTEGER PRIMARY KEY AUTOINCREMENT,
-          Nombre TEXT,
-          Correo TEXT UNIQUE,
-          Contrasena TEXT,
-          Nivel INTEGER,
-          Puntos INTEGER,
-          FechaRegistro TEXT
-        )
-      `);
-
+      // SOLO CONSULTA - NO CREAR TABLAS
       const user = await sqliteGet('SELECT * FROM Usuarios WHERE Correo = ?', [correoFinal]);
       if (!user) return res.status(400).json({ error: 'Usuario no encontrado.' });
 
@@ -475,7 +521,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-
 // ----------------- EJERCICIOS - COMPLETAR -----------------
 app.post('/api/ejercicios/completar', authenticateToken, async (req, res) => {
   try {
@@ -486,25 +531,7 @@ app.post('/api/ejercicios/completar', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'idEjercicio es requerido' });
 
     if (USE_SQLITE) {
-      // Crear tablas si no existen
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Ejercicios (
-          IdEjercicio INTEGER PRIMARY KEY,
-          Nombre TEXT
-        )
-      `);
-
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS SesionesEjercicio (
-          IdSesion INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          IdEjercicio INTEGER,
-          FechaSesion TEXT,
-          Completado INTEGER,
-          RespuestaGratitud TEXT
-        )
-      `);
-
+      // SOLO CONSULTAS - NO CREAR TABLAS
       const ejercicio = await sqliteGet(
         'SELECT IdEjercicio FROM Ejercicios WHERE IdEjercicio = ?',
         [idEjercicio]
@@ -564,7 +591,6 @@ app.post('/api/ejercicios/completar', authenticateToken, async (req, res) => {
   }
 });
 
-
 // ----------------- EJERCICIOS - GRATITUD -----------------
 app.post('/api/ejercicios/gratitud', authenticateToken, async (req, res) => {
   try {
@@ -577,18 +603,7 @@ app.post('/api/ejercicios/gratitud', authenticateToken, async (req, res) => {
     const texto = `1. ${gratitud1} | 2. ${gratitud2} | 3. ${gratitud3}`;
 
     if (USE_SQLITE) {
-
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS SesionesEjercicio (
-          IdSesion INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          IdEjercicio INTEGER,
-          FechaSesion TEXT,
-          Completado INTEGER,
-          RespuestaGratitud TEXT
-        )
-      `);
-
+      // SOLO INSERT - NO CREAR TABLAS
       await sqliteRun(`
         INSERT INTO SesionesEjercicio (IdUsuario, IdEjercicio, FechaSesion, Completado, RespuestaGratitud)
         VALUES (?, 4, datetime('now'), 1, ?)
@@ -636,28 +651,14 @@ app.post('/api/ejercicios/gratitud', authenticateToken, async (req, res) => {
   }
 });
 
-
 // ----------------- RETOS -----------------
-async function ensureSQLiteRetos() {
-  await sqliteRun(`
-    CREATE TABLE IF NOT EXISTS Retos (
-      IdReto INTEGER PRIMARY KEY AUTOINCREMENT,
-      IdUsuario INTEGER,
-      Titulo TEXT,
-      Estado TEXT DEFAULT 'Pendiente',
-      FechaCreacion TEXT,
-      FechaCumplido TEXT
-    )
-  `);
-}
-
 // GET retos
 app.get('/api/retos', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-      await ensureSQLiteRetos();
+      // SOLO CONSULTA - NO CREAR TABLAS
       const rows = await sqliteAll(
         'SELECT * FROM Retos WHERE IdUsuario = ? ORDER BY FechaCreacion DESC',
         [userId]
@@ -686,8 +687,7 @@ app.post('/api/retos', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: "El título es obligatorio" });
 
     if (USE_SQLITE) {
-      await ensureSQLiteRetos();
-
+      // SOLO INSERT - NO CREAR TABLAS
       const r = await sqliteRun(
         `INSERT INTO Retos (IdUsuario, Titulo, Estado, FechaCreacion)
          VALUES (?, ?, 'Pendiente', datetime('now'))`,
@@ -723,8 +723,7 @@ app.put('/api/retos/:id', authenticateToken, async (req, res) => {
     const nuevoEstado = Cumplido ? "Cumplido" : "Fallido";
 
     if (USE_SQLITE) {
-      await ensureSQLiteRetos();
-
+      // SOLO UPDATE - NO CREAR TABLAS
       if (Cumplido) {
         await sqliteRun(
           `UPDATE Retos SET Estado=?, FechaCumplido=datetime('now')
@@ -770,8 +769,7 @@ app.delete('/api/retos/:id', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-      await ensureSQLiteRetos();
-
+      // SOLO DELETE - NO CREAR TABLAS
       const r = await sqliteRun(
         'DELETE FROM Retos WHERE IdReto=? AND IdUsuario=?',
         [id, userId]
@@ -797,24 +795,14 @@ app.delete('/api/retos/:id', authenticateToken, async (req, res) => {
   }
 });
 
-
 // ----------------- EMOCIONES -----------------
 app.get('/api/emociones', async (req, res) => {
   try {
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Emociones (
-          IdEmocion INTEGER PRIMARY KEY,
-          Nombre TEXT,
-          Color TEXT,
-          Icono TEXT
-        )
-      `);
-
+      // SOLO CONSULTA - NO CREAR TABLAS
       const rows = await sqliteAll(
         'SELECT * FROM Emociones ORDER BY IdEmocion'
       );
-
       return res.json(rows);
     }
 
@@ -829,7 +817,6 @@ app.get('/api/emociones', async (req, res) => {
   }
 });
 
-
 // Registrar emoción
 app.post('/api/emociones/registrar', authenticateToken, async (req, res) => {
   try {
@@ -837,7 +824,7 @@ app.post('/api/emociones/registrar', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-
+      // SOLO CONSULTAS E INSERT - NO CREAR TABLAS
       const emocion = await sqliteGet(
         'SELECT IdEmocion FROM Emociones WHERE LOWER(Nombre)=LOWER(?)',
         [tipo]
@@ -845,16 +832,6 @@ app.post('/api/emociones/registrar', authenticateToken, async (req, res) => {
 
       if (!emocion)
         return res.status(400).json({ error: "Tipo de emoción no válido" });
-
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS RegistroEmocional (
-          IdRegistro INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          IdEmocion INTEGER,
-          Nota TEXT,
-          FechaRegistro TEXT
-        )
-      `);
 
       await sqliteRun(
         `INSERT INTO RegistroEmocional (IdUsuario, IdEmocion, Nota, FechaRegistro)
@@ -891,13 +868,13 @@ app.post('/api/emociones/registrar', authenticateToken, async (req, res) => {
   }
 });
 
-
 // Historial emociones
 app.get('/api/emociones/usuario', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
+      // SOLO CONSULTA - NO CREAR TABLAS
       const rows = await sqliteAll(`
         SELECT 
           e.Nombre, 
@@ -933,13 +910,13 @@ app.get('/api/emociones/usuario', authenticateToken, async (req, res) => {
   }
 });
 
-
 // Emociones para calendario
 app.get('/api/calendario/emociones', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
+      // SOLO CONSULTA - NO CREAR TABLAS
       const rows = await sqliteAll(`
         SELECT 
           e.Nombre AS emocion,
@@ -986,32 +963,13 @@ app.get('/api/mascota/actual', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS UsuarioMascota (
-          IdUsuarioMascota INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          IdMascota INTEGER,
-          Tipo TEXT,
-          FechaAdopcion TEXT,
-          Activa INTEGER,
-          Nivel INTEGER,
-          Experiencia INTEGER,
-          ExperienciaNecesaria INTEGER,
-          Felicidad INTEGER,
-          Energia INTEGER,
-          Hambre INTEGER,
-          Monedas INTEGER,
-          Estado TEXT
-        )
-      `);
-
+      // SOLO CONSULTA - NO CREAR TABLAS
       const row = await sqliteGet(
         `SELECT * FROM UsuarioMascota
          WHERE IdUsuario = ? AND Activa = 1
          ORDER BY FechaAdopcion DESC LIMIT 1`,
         [userId]
       );
-
       return res.json(row || null);
     }
 
@@ -1021,7 +979,6 @@ app.get('/api/mascota/actual', authenticateToken, async (req, res) => {
       WHERE IdUsuario = @IdUsuario AND Activa = 1
       ORDER BY FechaAdopcion DESC
     `);
-
     return res.json(result.recordset[0] || null);
 
   } catch (error) {
@@ -1029,7 +986,6 @@ app.get('/api/mascota/actual', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Error cargando mascota" });
   }
 });
-
 
 // =========================================================
 // 🐾 MASCOTA - SELECCIONAR / ADOPTAR
@@ -1042,37 +998,12 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
   try {
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Mascotas (
-          IdMascota INTEGER PRIMARY KEY AUTOINCREMENT,
-          Tipo TEXT,
-          Imagen TEXT
-        )
-      `);
-
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS UsuarioMascota (
-          IdUsuarioMascota INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          IdMascota INTEGER,
-          Tipo TEXT,
-          FechaAdopcion TEXT,
-          Activa INTEGER,
-          Nivel INTEGER,
-          Experiencia INTEGER,
-          ExperienciaNecesaria INTEGER,
-          Felicidad INTEGER,
-          Energia INTEGER,
-          Hambre INTEGER,
-          Monedas INTEGER,
-          Estado TEXT
-        )
-      `);
-
+      // SOLO OPERACIONES - NO CREAR TABLAS
+      
       // desactivar mascotas previas
       await sqliteRun(`UPDATE UsuarioMascota SET Activa = 0 WHERE IdUsuario = ?`, [IdUsuario]);
 
-      // existe?
+      // verificar si ya existe esta mascota para el usuario
       const existente = await sqliteGet(
         `SELECT * FROM UsuarioMascota
          WHERE IdUsuario = ? AND Tipo = ?
@@ -1088,7 +1019,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
         return res.json(existente);
       }
 
-      // nueva adopción
+      // nueva adopción: buscar mascota base
       const mascotaBase = await sqliteGet(
         `SELECT * FROM Mascotas WHERE Tipo = ? LIMIT 1`, [Tipo]
       );
@@ -1102,11 +1033,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
          VALUES (?, ?, ?, datetime('now'), 1,
                  1, 0, 100,
                  100, 100, 0, 50, 'Feliz')`,
-        [
-          IdUsuario,
-          mascotaBase.IdMascota,
-          mascotaBase.Tipo
-        ]
+        [IdUsuario, mascotaBase.IdMascota, mascotaBase.Tipo]
       );
 
       const newRow = await sqliteGet(
@@ -1193,7 +1120,6 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
   }
 });
 
-
 // =========================================================
 // 🐾 MASCOTA - ACTUALIZAR PARÁMETROS
 // =========================================================
@@ -1206,6 +1132,7 @@ app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: "IdUsuarioMascota requerido" });
 
     if (USE_SQLITE) {
+      // SOLO UPDATE - NO CREAR TABLAS
       const check = await sqliteGet(
         `SELECT 1 FROM UsuarioMascota
          WHERE IdUsuarioMascota = ? AND IdUsuario = ?`,
@@ -1278,25 +1205,22 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-      // Total emociones registradas
+      // SOLO CONSULTAS - NO CREAR TABLAS
       const emocionesResult = await sqliteGet(
         'SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = ?',
         [userId]
       );
 
-      // Ejercicios completados
       const ejerciciosResult = await sqliteGet(
         'SELECT COUNT(*) as Total FROM SesionesEjercicio WHERE IdUsuario = ?',
         [userId]
       );
 
-      // Retos completados (SQLite usa tabla Retos)
       const retosResult = await sqliteGet(
         "SELECT COUNT(*) as Total FROM Retos WHERE IdUsuario = ? AND Estado = 'Cumplido'",
         [userId]
       );
 
-      // Días consecutivos con emociones registradas
       const diasResult = await sqliteGet(
         "SELECT COUNT(DISTINCT date(FechaRegistro)) as Dias FROM RegistroEmocional WHERE IdUsuario = ? AND FechaRegistro >= datetime('now', '-7 day')",
         [userId]
@@ -1348,18 +1272,7 @@ app.post('/api/perfil/guardar', async (req, res) => {
       return res.status(400).json({ error: 'Falta idUsuario' });
 
     if (USE_SQLITE) {
-      await sqliteRun(`
-        CREATE TABLE IF NOT EXISTS Perfil (
-          IdPerfil INTEGER PRIMARY KEY AUTOINCREMENT,
-          IdUsuario INTEGER,
-          NombreCompleto TEXT,
-          CorreoElectronico TEXT,
-          FechaDeNacimiento TEXT,
-          Genero TEXT,
-          Biografia TEXT
-        )
-      `);
-
+      // SOLO OPERACIONES - NO CREAR TABLAS
       const existe = await sqliteGet('SELECT 1 FROM Perfil WHERE IdUsuario = ?', [idUsuario]);
 
       if (!existe) {
@@ -1448,7 +1361,6 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-
 // 404
 app.use('*', (req, res) => { res.status(404).json({ error: 'Endpoint no encontrado' }); });
 
@@ -1457,6 +1369,6 @@ app.listen(PORT, () => {
   console.log('🚀 SERVIDOR MENTE SANA INICIADO (DUAL DB)');
   console.log(`📄 Página web: http://localhost:${PORT}`);
   console.log(`🔧 API Health: http://localhost:${PORT}/api/health`);
-  console.log(`🗄️ Usando DB: ${USE_SQLITE ? 'SQLite ( RAILWAY/ production)' : 'SQL Server (local)'}`);
+  console.log(`🗄️ Usando DB: ${USE_SQLITE ? 'SQLite (RAILWAY/PRODUCTION)' : 'SQL Server (LOCAL)'}`);
   console.log('══════════════════════════════════════');
 });
