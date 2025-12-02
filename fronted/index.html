@@ -5115,85 +5115,6 @@ function logout() {
     console.log("👋 Sesión cerrada exitosamente");
 }
 
-// ==================== CARGAR PERFIL (VERSIÓN SIN ENDPOINT) ====================
-async function cargarDatosPerfil() {
-    try {
-        console.log("📥 Cargando datos del perfil...");
-        
-        const idUsuario = initializeUserId();
-        
-        if (!idUsuario) {
-            console.warn("❌ No hay idUsuario");
-            updateUserInfo();
-            setupUserAvatar();
-            return;
-        }
-
-        console.log("🔍 ID de usuario:", idUsuario);
-
-        // INTENTAR cargar perfil desde API
-        let data = null;
-        try {
-            data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
-            console.log("✅ Datos del perfil recibidos:", data);
-        } catch (apiError) {
-            console.warn("⚠️ No se pudo cargar perfil desde API:", apiError.message);
-            // Continuar con datos locales
-        }
-
-        // Si no hay datos de la API, usar localStorage
-        if (!data) {
-            console.log("📦 Usando datos locales de localStorage");
-            
-            const userName = localStorage.getItem('userName') || '';
-            const userEmail = localStorage.getItem('userEmail') || '';
-            
-            // Rellenar formulario con datos locales
-            const perfilNombre = document.getElementById('perfil-nombre');
-            const perfilEmail = document.getElementById('perfil-email');
-            
-            if (perfilNombre && userName) perfilNombre.value = userName;
-            if (perfilEmail && userEmail) perfilEmail.value = userEmail;
-            
-        } else {
-            // Rellenar formulario con datos de API
-            const perfilNombre = document.getElementById('perfil-nombre');
-            const perfilEmail = document.getElementById('perfil-email');
-            const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
-            const perfilGenero = document.getElementById('perfil-genero');
-            const perfilBio = document.getElementById('perfil-bio');
-            
-            if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
-            if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
-            
-            if (perfilFecha && data.FechaDeNacimiento) {
-                const fecha = new Date(data.FechaDeNacimiento);
-                perfilFecha.value = fecha.toISOString().split('T')[0];
-            }
-            
-            if (perfilGenero) perfilGenero.value = data.Genero || '';
-            if (perfilBio) perfilBio.value = data.Biografia || '';
-            
-            // Guardar en localStorage
-            if (data.NombreCompleto) localStorage.setItem('userName', data.NombreCompleto);
-            if (data.CorreoElectronico) localStorage.setItem('userEmail', data.CorreoElectronico);
-        }
-
-        // Siempre actualizar UI
-        updateUserInfo();
-        setupUserAvatar();
-        
-        // Cargar estadísticas
-        await cargarEstadisticasPerfil();
-        
-        console.log("✅ Perfil cargado exitosamente");
-
-    } catch (err) {
-        console.error('❌ Error al cargar perfil:', err);
-        updateUserInfo();
-        setupUserAvatar();
-    }
-}
 
 // ==================== GUARDAR PERFIL EN SQLite ====================
 async function guardarPerfil() {
@@ -5274,7 +5195,7 @@ async function guardarPerfil() {
 
 async function cargarDatosPerfil() {
     try {
-        console.log("📥 Cargando datos del perfil...");
+        // console.log("📥 Cargando datos del perfil..."); // ← Comentar para producción
         
         const idUsuario = initializeUserId();
         if (!idUsuario) {
@@ -5283,7 +5204,7 @@ async function cargarDatosPerfil() {
             return;
         }
 
-        console.log("🔍 ID de usuario:", idUsuario);
+        // console.log("🔍 ID de usuario:", idUsuario); // ← Comentar para producción
 
         // Intentar cargar perfil silenciosamente
         try {
@@ -5313,20 +5234,20 @@ async function cargarDatosPerfil() {
                 if (data.CorreoElectronico) localStorage.setItem('userEmail', data.CorreoElectronico);
             }
         } catch (apiError) {
-            // Error silencioso - usar datos locales
+            // Error completamente silencioso
         }
 
-        // Siempre actualizar UI con lo que tengamos
+        // Siempre actualizar UI
         updateUserInfo();
         setupUserAvatar();
         
         // Cargar estadísticas
         await cargarEstadisticasPerfil();
         
-        console.log("✅ Perfil cargado exitosamente");
+        // console.log("✅ Perfil cargado exitosamente"); // ← Comentar para producción
 
     } catch (err) {
-        console.error('❌ Error al cargar perfil:', err);
+        // console.error('❌ Error al cargar perfil:', err); // ← Comentar para producción
         updateUserInfo();
         setupUserAvatar();
     }
