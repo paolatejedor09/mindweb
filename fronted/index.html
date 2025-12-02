@@ -4788,7 +4788,7 @@ window.addEventListener('load', async function() {
 
 
 
-/* ---------- LOGIN CORREGIDO ---------- */
+/* ---------- LOGIN  ---------- */
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
@@ -4909,7 +4909,7 @@ async function login() {
     }
 }
 
-/* ---------- REGISTER CORREGIDO ---------- */
+/* ---------- REGISTER  ---------- */
 async function register() {
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
@@ -5081,7 +5081,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-/* ---------- LOGOUT (AGREGA ESTA FUNCIÓN) ---------- */
+/* ---------- LOGOUT ---------- */
 function logout() {
     // Confirmar antes de cerrar sesión
     if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) {
@@ -5272,6 +5272,65 @@ async function guardarPerfil() {
     }
 }
 
+async function cargarDatosPerfil() {
+    try {
+        console.log("📥 Cargando datos del perfil...");
+        
+        const idUsuario = initializeUserId();
+        if (!idUsuario) {
+            updateUserInfo();
+            setupUserAvatar();
+            return;
+        }
+
+        console.log("🔍 ID de usuario:", idUsuario);
+
+        // Intentar cargar perfil silenciosamente
+        try {
+            const data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
+            
+            if (data && data.NombreCompleto !== undefined) {
+                // Rellenar formulario con datos de API
+                const perfilNombre = document.getElementById('perfil-nombre');
+                const perfilEmail = document.getElementById('perfil-email');
+                const perfilFecha = document.getElementById('perfil-fecha-nacimiento');
+                const perfilGenero = document.getElementById('perfil-genero');
+                const perfilBio = document.getElementById('perfil-bio');
+                
+                if (perfilNombre) perfilNombre.value = data.NombreCompleto || '';
+                if (perfilEmail) perfilEmail.value = data.CorreoElectronico || '';
+                
+                if (perfilFecha && data.FechaDeNacimiento) {
+                    const fecha = new Date(data.FechaDeNacimiento);
+                    perfilFecha.value = fecha.toISOString().split('T')[0];
+                }
+                
+                if (perfilGenero) perfilGenero.value = data.Genero || '';
+                if (perfilBio) perfilBio.value = data.Biografia || '';
+                
+                // Guardar en localStorage
+                if (data.NombreCompleto) localStorage.setItem('userName', data.NombreCompleto);
+                if (data.CorreoElectronico) localStorage.setItem('userEmail', data.CorreoElectronico);
+            }
+        } catch (apiError) {
+            // Error silencioso - usar datos locales
+        }
+
+        // Siempre actualizar UI con lo que tengamos
+        updateUserInfo();
+        setupUserAvatar();
+        
+        // Cargar estadísticas
+        await cargarEstadisticasPerfil();
+        
+        console.log("✅ Perfil cargado exitosamente");
+
+    } catch (err) {
+        console.error('❌ Error al cargar perfil:', err);
+        updateUserInfo();
+        setupUserAvatar();
+    }
+}
 // ==================== CARGAR ESTADÍSTICAS DESDE SQLite ====================
 async function cargarEstadisticasPerfil() {
     try {
