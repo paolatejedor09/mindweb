@@ -4584,7 +4584,7 @@ window.addEventListener('load', async function() {
 
 
 
-/* ---------- login ---------- */
+/* ---------- LOGIN CORREGIDO con apiFetch ---------- */
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
@@ -4606,70 +4606,99 @@ async function login() {
     try {
         console.log("🔐 Intentando login con:", { email });
         
-        const data = await apiRequest('/auth/login', {
+        // ✅ CORRECTO: Usando apiFetch (que ya incluye /api/)
+        const data = await apiFetch('/auth/login', {
             method: 'POST',
-            body: { email, password }
+            body: { 
+                email: email, 
+                password: password 
+            }
         });
 
         console.log("✅ Login exitoso, datos recibidos:", data);
 
+        if (!data.token) {
+            throw new Error('No se recibió token del servidor');
+        }
+
         // Guardar token
         localStorage.setItem('authToken', data.token);
+        localStorage.setItem('token', data.token); // Backup
 
-        // Guardar info del usuario - CORREGIDO para SQLite
+        // Guardar info del usuario
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        // 🔥 CORREGIDO: Usar las propiedades correctas (SQLite usa mayúsculas)
+        // Usar las propiedades correctas para SQLite
         const userName = data.user.Nombre || data.user.nombre || '';
-        const userEmail = data.user.Correo || data.user.email || '';
-        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
+        const userEmail = data.user.Correo || data.user.email || email;
         
         localStorage.setItem('userName', userName);
         localStorage.setItem('userEmail', userEmail);
-        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 CORREGIDO: Asegurar que el idUsuario se guarda correctamente
-        const idUsuario = data.user.IdUsuario || data.user.idUsuario;
+        // 🔥 CRÍTICO: Asegurar que el idUsuario se guarda correctamente
+        const idUsuario = data.user.IdUsuario || data.user.idUsuario || data.user.userId;
         if (idUsuario) {
             localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado:", idUsuario);
         } else {
-            console.warn("⚠️ No se recibió idUsuario del servidor");
-            // Intentar extraer del token JWT como respaldo
+            console.warn("⚠️ No se recibió idUsuario del servidor, intentando extraer del token...");
+            // Intentar extraer del token JWT
             try {
-                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
-                if (tokenPayload.userId) {
-                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
-                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
+                const tokenParts = data.token.split('.');
+                if (tokenParts.length === 3) {
+                    const payload = JSON.parse(atob(tokenParts[1]));
+                    if (payload.userId) {
+                        localStorage.setItem('idUsuario', payload.userId.toString());
+                        console.log("✅ idUsuario extraído del token:", payload.userId);
+                    } else if (payload.idUsuario) {
+                        localStorage.setItem('idUsuario', payload.idUsuario.toString());
+                        console.log("✅ idUsuario extraído del token:", payload.idUsuario);
+                    }
                 }
             } catch (tokenErr) {
                 console.error("❌ Error parseando token:", tokenErr);
+                throw new Error('Error procesando la respuesta del servidor');
             }
         }
 
-        // Mascota - solo si tenemos idUsuario
-        if (idUsuario) {
-            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
-            if (typeof mascota !== "undefined") {
-                mascota.idUsuario = idUsuario;
-            }
+        // Verificar que tenemos idUsuario
+        if (!localStorage.getItem('idUsuario')) {
+            throw new Error('No se pudo obtener el ID de usuario. Contacta al soporte.');
         }
+
+        // Guardar para mascotas
+        localStorage.setItem("mascota_idUsuario", localStorage.getItem('idUsuario'));
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
+        setupUserAvatar();
         
-        // Cargar datos del usuario
-        await loadUserData();
-
-        // Cargar perfil
-        await cargarDatosPerfil();
-
-        // Actualizar mascota después del login
-        console.log('🎯 Login exitoso - Actualizando mascota...');
-        if (typeof forzarActualizacionMascota !== "undefined") {
-            setTimeout(() => forzarActualizacionMascota(), 500);
-        }
+        // Cargar datos del usuario (perfil, estadísticas, etc.)
+        setTimeout(async () => {
+            try {
+                await cargarDatosPerfil();
+                await cargarEstadisticasPerfil();
+                
+                // Actualizar mascota después del login
+                if (typeof forzarActualizacionMascota === "function") {
+                    setTimeout(() => forzarActualizacionMascota(), 500);
+                }
+                
+                // Cargar otros datos
+                if (typeof cargarRetos === "function") {
+                    cargarRetos();
+                }
+                
+                if (typeof inicializarCalendario === "function") {
+                    inicializarCalendario();
+                }
+                
+                console.log("✅ Todas las cargas completadas después del login");
+            } catch (loadError) {
+                console.warn("⚠️ Algunas cargas fallaron:", loadError);
+            }
+        }, 100);
 
         // Mostrar mensaje de bienvenida
         setTimeout(() => {
@@ -4688,17 +4717,23 @@ async function login() {
         
         // Mensaje de error más descriptivo
         let errorMsg = 'Error al iniciar sesión';
-        if (err.message.includes('no encontrado') || err.message.includes('404')) {
+        
+        if (err.message.includes('no encontrado') || err.message.includes('404') || err.payload?.error?.includes('no encontrado')) {
             errorMsg = 'Usuario no encontrado. Verifica tu correo o regístrate.';
-        } else if (err.message.includes('contraseña') || err.message.includes('401')) {
+        } else if (err.message.includes('contraseña') || err.message.includes('401') || err.payload?.error?.includes('contraseña')) {
             errorMsg = 'Contraseña incorrecta. Intenta nuevamente.';
         } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
             errorMsg = 'Error de conexión. Verifica tu internet o intenta más tarde.';
+        } else if (err.message.includes('token') || err.message.includes('No se pudo obtener')) {
+            errorMsg = 'Error en la respuesta del servidor. Intenta nuevamente.';
         } else {
-            errorMsg = 'Error: ' + err.message;
+            errorMsg = 'Error: ' + (err.message || 'Desconocido');
         }
         
         alert(errorMsg);
+        
+        // Limpiar campos de contraseña
+        document.getElementById('login-password').value = '';
         
     } finally {
         // Restaurar botón
@@ -4709,39 +4744,7 @@ async function login() {
     }
 }
 
-function logout() {
-    // Confirmar antes de cerrar sesión
-    if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) {
-        return;
-    }
-    
-    // Limpiar session
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userAvatar');
-    localStorage.removeItem('mascota_idUsuario');
-    localStorage.removeItem('idUsuario');
-    
-    // Limpiar también otros datos de sesión si existen
-    ['ejerciciosRealizados', 'diasConsecutivos', 'emocionesRegistradas', 'retosCompletados'].forEach(item => {
-        localStorage.removeItem(item);
-    });
-
-    // Redirigir a pantalla de bienvenida
-    mostrarPantalla('welcome-screen');
-    
-    // Limpiar formularios
-    const loginForm = document.getElementById('login-screen');
-    if (loginForm) {
-        loginForm.querySelectorAll('input').forEach(input => input.value = '');
-    }
-    
-    console.log("👋 Sesión cerrada exitosamente");
-}
-
-/* ---------- register ---------- */
+/* ---------- REGISTER CORREGIDO con apiFetch ---------- */
 async function register() {
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
@@ -4752,6 +4755,13 @@ async function register() {
     if (!name || !email || !password || !confirm) { 
         alert('Por favor, completa todos los campos'); 
         return; 
+    }
+    
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        alert('Por favor, ingresa un correo electrónico válido');
+        return;
     }
     
     if (password.length < 6) {
@@ -4775,7 +4785,8 @@ async function register() {
     try {
         console.log("📝 Intentando registro con:", { name, email });
         
-        const data = await apiRequest('/auth/register', {
+        // ✅ CORRECTO: Usando apiFetch (que ya incluye /api/)
+        const data = await apiFetch('/auth/register', {
             method: 'POST',
             body: { 
                 nombre: name, 
@@ -4786,21 +4797,26 @@ async function register() {
 
         console.log("✅ Registro exitoso, datos recibidos:", data);
 
-        // Guardar token y datos del usuario
+        if (!data.token) {
+            throw new Error('No se recibió token del servidor');
+        }
+
+        // Guardar token
         localStorage.setItem('authToken', data.token);
+        localStorage.setItem('token', data.token); // Backup
+
+        // Guardar info del usuario
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        // 🔥 CORREGIDO: Usar propiedades correctas para SQLite
+        // Usar propiedades correctas para SQLite
         const userName = data.user.Nombre || data.user.nombre || name;
         const userEmail = data.user.Correo || data.user.email || email;
-        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
         
         localStorage.setItem('userName', userName);
         localStorage.setItem('userEmail', userEmail);
-        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 CORREGIDO: Asegurar idUsuario
-        const idUsuario = data.user.IdUsuario || data.user.idUsuario;
+        // 🔥 CRÍTICO: Asegurar idUsuario
+        const idUsuario = data.user.IdUsuario || data.user.idUsuario || data.user.userId;
         if (idUsuario) {
             localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado en registro:", idUsuario);
@@ -4808,29 +4824,60 @@ async function register() {
             console.warn("⚠️ No se recibió idUsuario en registro");
             // Intentar del token
             try {
-                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
-                if (tokenPayload.userId) {
-                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
-                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
+                const tokenParts = data.token.split('.');
+                if (tokenParts.length === 3) {
+                    const payload = JSON.parse(atob(tokenParts[1]));
+                    if (payload.userId) {
+                        localStorage.setItem('idUsuario', payload.userId.toString());
+                        console.log("✅ idUsuario extraído del token:", payload.userId);
+                    } else if (payload.idUsuario) {
+                        localStorage.setItem('idUsuario', payload.idUsuario.toString());
+                        console.log("✅ idUsuario extraído del token:", payload.idUsuario);
+                    }
                 }
             } catch (tokenErr) {
                 console.error("❌ Error parseando token:", tokenErr);
+                throw new Error('Error procesando la respuesta del servidor');
             }
         }
 
-        // Guardar para mascotas solo si tenemos idUsuario
-        if (idUsuario) {
-            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
-            if (typeof mascota !== "undefined") {
-                mascota.idUsuario = idUsuario;
-            }
-        } 
+        // Verificar que tenemos idUsuario
+        if (!localStorage.getItem('idUsuario')) {
+            throw new Error('No se pudo obtener el ID de usuario. Contacta al soporte.');
+        }
+
+        // Guardar para mascotas
+        localStorage.setItem("mascota_idUsuario", localStorage.getItem('idUsuario'));
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
-        await loadUserData();
         setupUserAvatar();
+
+        // Cargar datos después del registro
+        setTimeout(async () => {
+            try {
+                await cargarDatosPerfil();
+                await cargarEstadisticasPerfil();
+                
+                // Crear perfil inicial si no existe
+                await apiFetch('/perfil/guardar', {
+                    method: 'POST',
+                    body: {
+                        idUsuario: parseInt(localStorage.getItem('idUsuario')),
+                        nombreCompleto: userName,
+                        correoElectronico: userEmail,
+                        fechaDeNacimiento: '',
+                        genero: '',
+                        biografia: ''
+                    }
+                });
+                
+                console.log("✅ Perfil inicial creado");
+            } catch (profileError) {
+                console.warn("⚠️ Error creando perfil inicial:", profileError);
+            }
+        }, 200);
 
         // Mensaje de bienvenida
         setTimeout(() => {
@@ -4846,7 +4893,7 @@ async function register() {
             // Mostrar tutorial inicial si es primer registro
             const firstTime = !localStorage.getItem('tutorialVisto');
             if (firstTime) {
-                alert('🎉 ¡Bienvenido a MindWeb! Te recomendamos explorar las diferentes secciones para conocer todas las funciones disponibles.');
+                alert('🎉 ¡Bienvenido a MindWeb! Te recomendamos completar tu perfil y explorar las diferentes secciones para conocer todas las funciones disponibles.');
                 localStorage.setItem('tutorialVisto', 'true');
             }
         }, 100);
@@ -4856,17 +4903,24 @@ async function register() {
         
         // Mensajes de error más específicos
         let errorMsg = 'Error al registrarse';
-        if (err.message.includes('ya existe') || err.message.includes('duplicate')) {
+        
+        if (err.message.includes('ya existe') || err.message.includes('duplicate') || err.payload?.error?.includes('ya existe')) {
             errorMsg = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
         } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
             errorMsg = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
         } else if (err.message.includes('email') || err.message.includes('correo')) {
             errorMsg = 'Por favor, ingresa un correo electrónico válido.';
+        } else if (err.message.includes('No se pudo obtener')) {
+            errorMsg = 'Error en la respuesta del servidor. Intenta nuevamente.';
         } else {
-            errorMsg = 'Error: ' + err.message;
+            errorMsg = 'Error: ' + (err.message || 'Desconocido');
         }
         
         alert(errorMsg);
+        
+        // Limpiar campos de contraseña
+        document.getElementById('register-password').value = '';
+        document.getElementById('register-confirm').value = '';
         
     } finally {
         // Restaurar botón
@@ -4877,49 +4931,64 @@ async function register() {
     }
 }
 
-// 🔥 FUNCIÓN AUXILIAR PARA VERIFICAR SESIÓN
+// 🔥 FUNCIÓN AUXILIAR PARA CARGAR ESTADÍSTICAS DESPUÉS DEL LOGIN
+async function cargarEstadisticasPerfil() {
+    try {
+        const data = await apiFetch('/estadisticas/generales');
+        
+        // Guardar estadísticas en localStorage
+        localStorage.setItem('emocionesRegistradas', data.emocionesRegistradas || 0);
+        localStorage.setItem('ejerciciosRealizados', data.ejerciciosRealizados || 0);
+        localStorage.setItem('retosCompletados', data.retosCompletados || 0);
+        localStorage.setItem('diasConsecutivos', data.diasConsecutivos || 0);
+
+        // Actualizar UI si existe
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
+        }
+        
+        console.log("📊 Estadísticas cargadas:", data);
+        return data;
+    } catch (error) {
+        console.warn("⚠️ No se pudieron cargar estadísticas:", error);
+        // Usar valores por defecto
+        return {
+            emocionesRegistradas: 0,
+            ejerciciosRealizados: 0,
+            retosCompletados: 0,
+            diasConsecutivos: 0
+        };
+    }
+}
+
+// 🔥 MEJORAR LA VERIFICACIÓN DE SESIÓN
 function verificarSesion() {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
     const user = localStorage.getItem('user');
     const idUsuario = localStorage.getItem('idUsuario');
     
     if (token && user && idUsuario) {
-        console.log("🔐 Sesión activa - Usuario:", JSON.parse(user).Nombre || JSON.parse(user).nombre);
-        return true;
+        try {
+            const userData = JSON.parse(user);
+            console.log("🔐 Sesión activa - Usuario:", userData.Nombre || userData.nombre || 'Usuario');
+            return true;
+        } catch (e) {
+            console.error("❌ Error parseando datos de usuario:", e);
+            return false;
+        }
     } else {
         console.log("🔓 No hay sesión activa");
         
         // Limpiar datos inconsistentes
-        if ((token && !user) || (user && !token)) {
-            console.warn("⚠️ Datos de sesión inconsistentes, limpiando...");
-            logout();
+        if (token && !user) {
+            console.warn("⚠️ Token sin datos de usuario, limpiando...");
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('token');
         }
         
         return false;
     }
 }
-
-// 🔥 INICIALIZAR AL CARGAR LA PÁGINA
-document.addEventListener('DOMContentLoaded', function() {
-    // Verificar sesión al cargar
-    const tieneSesion = verificarSesion();
-    
-    if (tieneSesion) {
-        console.log("🔄 Usuario ya logueado, mostrando app principal...");
-        mostrarPantalla('main-app');
-        updateUserInfo();
-        setupUserAvatar();
-        
-        // Cargar datos en segundo plano
-        setTimeout(() => {
-            loadUserData().catch(err => console.warn("⚠️ Error cargando datos:", err));
-            cargarDatosPerfil().catch(err => console.warn("⚠️ Error cargando perfil:", err));
-        }, 500);
-    } else {
-        console.log("👋 Mostrando pantalla de bienvenida");
-        mostrarPantalla('welcome-screen');
-    }
-});
 
 // ==================== CARGAR PERFIL DESDE LA API (SQLite) ====================
 async function cargarDatosPerfil() {
