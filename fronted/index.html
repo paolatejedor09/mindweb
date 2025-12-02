@@ -4584,18 +4584,16 @@ window.addEventListener('load', async function() {
 
 
 
-/* ---------- LOGIN CORREGIDO con apiFetch ---------- */
+/* ---------- LOGIN CORREGIDO ---------- */
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
     
-    // Validación mejorada
     if (!email || !password) { 
         alert('Por favor, completa todos los campos'); 
         return; 
     }
 
-    // Mostrar indicador de carga
     const loginBtn = document.querySelector('#login-screen button[onclick="login()"]');
     const originalText = loginBtn?.textContent || 'Iniciar Sesión';
     if (loginBtn) {
@@ -4606,20 +4604,13 @@ async function login() {
     try {
         console.log("🔐 Intentando login con:", { email });
         
-        // ✅ CORRECTO: Usando apiFetch (que ya incluye /api/)
+        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
         const data = await apiFetch('/auth/login', {
             method: 'POST',
-            body: { 
-                email: email, 
-                password: password 
-            }
+            body: { email, password }
         });
 
         console.log("✅ Login exitoso, datos recibidos:", data);
-
-        if (!data.token) {
-            throw new Error('No se recibió token del servidor');
-        }
 
         // Guardar token
         localStorage.setItem('authToken', data.token);
@@ -4628,77 +4619,55 @@ async function login() {
         // Guardar info del usuario
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        // Usar las propiedades correctas para SQLite
         const userName = data.user.Nombre || data.user.nombre || '';
-        const userEmail = data.user.Correo || data.user.email || email;
+        const userEmail = data.user.Correo || data.user.email || '';
+        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
         
         localStorage.setItem('userName', userName);
         localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 CRÍTICO: Asegurar que el idUsuario se guarda correctamente
-        const idUsuario = data.user.IdUsuario || data.user.idUsuario || data.user.userId;
+        // Guardar idUsuario
+        const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
             localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado:", idUsuario);
         } else {
-            console.warn("⚠️ No se recibió idUsuario del servidor, intentando extraer del token...");
-            // Intentar extraer del token JWT
+            console.warn("⚠️ No se recibió idUsuario del servidor");
             try {
-                const tokenParts = data.token.split('.');
-                if (tokenParts.length === 3) {
-                    const payload = JSON.parse(atob(tokenParts[1]));
-                    if (payload.userId) {
-                        localStorage.setItem('idUsuario', payload.userId.toString());
-                        console.log("✅ idUsuario extraído del token:", payload.userId);
-                    } else if (payload.idUsuario) {
-                        localStorage.setItem('idUsuario', payload.idUsuario.toString());
-                        console.log("✅ idUsuario extraído del token:", payload.idUsuario);
-                    }
+                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
+                if (tokenPayload.userId) {
+                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
+                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
                 }
             } catch (tokenErr) {
                 console.error("❌ Error parseando token:", tokenErr);
-                throw new Error('Error procesando la respuesta del servidor');
             }
         }
 
-        // Verificar que tenemos idUsuario
-        if (!localStorage.getItem('idUsuario')) {
-            throw new Error('No se pudo obtener el ID de usuario. Contacta al soporte.');
-        }
-
         // Guardar para mascotas
-        localStorage.setItem("mascota_idUsuario", localStorage.getItem('idUsuario'));
+        if (idUsuario) {
+            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
+            if (typeof mascota !== "undefined") {
+                mascota.idUsuario = idUsuario;
+            }
+        }
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
-        setupUserAvatar();
         
-        // Cargar datos del usuario (perfil, estadísticas, etc.)
-        setTimeout(async () => {
-            try {
-                await cargarDatosPerfil();
-                await cargarEstadisticasPerfil();
-                
-                // Actualizar mascota después del login
-                if (typeof forzarActualizacionMascota === "function") {
-                    setTimeout(() => forzarActualizacionMascota(), 500);
-                }
-                
-                // Cargar otros datos
-                if (typeof cargarRetos === "function") {
-                    cargarRetos();
-                }
-                
-                if (typeof inicializarCalendario === "function") {
-                    inicializarCalendario();
-                }
-                
-                console.log("✅ Todas las cargas completadas después del login");
-            } catch (loadError) {
-                console.warn("⚠️ Algunas cargas fallaron:", loadError);
-            }
-        }, 100);
+        // Cargar datos del usuario
+        await loadUserData();
+
+        // Cargar perfil
+        await cargarDatosPerfil();
+
+        // Actualizar mascota después del login
+        console.log('🎯 Login exitoso - Actualizando mascota...');
+        if (typeof forzarActualizacionMascota !== "undefined") {
+            setTimeout(() => forzarActualizacionMascota(), 500);
+        }
 
         // Mostrar mensaje de bienvenida
         setTimeout(() => {
@@ -4715,28 +4684,20 @@ async function login() {
     } catch (err) {
         console.error('❌ Error en login:', err);
         
-        // Mensaje de error más descriptivo
         let errorMsg = 'Error al iniciar sesión';
-        
-        if (err.message.includes('no encontrado') || err.message.includes('404') || err.payload?.error?.includes('no encontrado')) {
+        if (err.message.includes('no encontrado') || err.message.includes('404')) {
             errorMsg = 'Usuario no encontrado. Verifica tu correo o regístrate.';
-        } else if (err.message.includes('contraseña') || err.message.includes('401') || err.payload?.error?.includes('contraseña')) {
+        } else if (err.message.includes('contraseña') || err.message.includes('401')) {
             errorMsg = 'Contraseña incorrecta. Intenta nuevamente.';
         } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
             errorMsg = 'Error de conexión. Verifica tu internet o intenta más tarde.';
-        } else if (err.message.includes('token') || err.message.includes('No se pudo obtener')) {
-            errorMsg = 'Error en la respuesta del servidor. Intenta nuevamente.';
         } else {
-            errorMsg = 'Error: ' + (err.message || 'Desconocido');
+            errorMsg = 'Error: ' + err.message;
         }
         
         alert(errorMsg);
         
-        // Limpiar campos de contraseña
-        document.getElementById('login-password').value = '';
-        
     } finally {
-        // Restaurar botón
         if (loginBtn) {
             loginBtn.textContent = originalText;
             loginBtn.disabled = false;
@@ -4744,24 +4705,16 @@ async function login() {
     }
 }
 
-/* ---------- REGISTER CORREGIDO con apiFetch ---------- */
+/* ---------- REGISTER CORREGIDO ---------- */
 async function register() {
     const name = document.getElementById('register-name').value.trim();
     const email = document.getElementById('register-email').value.trim();
     const password = document.getElementById('register-password').value;
     const confirm = document.getElementById('register-confirm').value;
     
-    // Validación mejorada
     if (!name || !email || !password || !confirm) { 
         alert('Por favor, completa todos los campos'); 
         return; 
-    }
-    
-    // Validar email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-        alert('Por favor, ingresa un correo electrónico válido');
-        return;
     }
     
     if (password.length < 6) {
@@ -4774,7 +4727,6 @@ async function register() {
         return; 
     }
 
-    // Mostrar indicador de carga
     const registerBtn = document.querySelector('#register-screen button[onclick="register()"]');
     const originalText = registerBtn?.textContent || 'Registrarse';
     if (registerBtn) {
@@ -4785,7 +4737,7 @@ async function register() {
     try {
         console.log("📝 Intentando registro con:", { name, email });
         
-        // ✅ CORRECTO: Usando apiFetch (que ya incluye /api/)
+        // ✅ CORREGIDO: Usar apiFetch en lugar de apiRequest
         const data = await apiFetch('/auth/register', {
             method: 'POST',
             body: { 
@@ -4797,87 +4749,50 @@ async function register() {
 
         console.log("✅ Registro exitoso, datos recibidos:", data);
 
-        if (!data.token) {
-            throw new Error('No se recibió token del servidor');
-        }
-
-        // Guardar token
+        // Guardar token y datos del usuario
         localStorage.setItem('authToken', data.token);
         localStorage.setItem('token', data.token); // Backup
-
-        // Guardar info del usuario
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        // Usar propiedades correctas para SQLite
         const userName = data.user.Nombre || data.user.nombre || name;
         const userEmail = data.user.Correo || data.user.email || email;
+        const userAvatar = data.user.Avatar || data.user.avatar || 'default';
         
         localStorage.setItem('userName', userName);
         localStorage.setItem('userEmail', userEmail);
+        localStorage.setItem('userAvatar', userAvatar);
 
-        // 🔥 CRÍTICO: Asegurar idUsuario
-        const idUsuario = data.user.IdUsuario || data.user.idUsuario || data.user.userId;
+        // Guardar idUsuario
+        const idUsuario = data.user.IdUsuario || data.user.idUsuario;
         if (idUsuario) {
             localStorage.setItem('idUsuario', idUsuario.toString());
             console.log("✅ idUsuario guardado en registro:", idUsuario);
         } else {
             console.warn("⚠️ No se recibió idUsuario en registro");
-            // Intentar del token
             try {
-                const tokenParts = data.token.split('.');
-                if (tokenParts.length === 3) {
-                    const payload = JSON.parse(atob(tokenParts[1]));
-                    if (payload.userId) {
-                        localStorage.setItem('idUsuario', payload.userId.toString());
-                        console.log("✅ idUsuario extraído del token:", payload.userId);
-                    } else if (payload.idUsuario) {
-                        localStorage.setItem('idUsuario', payload.idUsuario.toString());
-                        console.log("✅ idUsuario extraído del token:", payload.idUsuario);
-                    }
+                const tokenPayload = JSON.parse(atob(data.token.split('.')[1]));
+                if (tokenPayload.userId) {
+                    localStorage.setItem('idUsuario', tokenPayload.userId.toString());
+                    console.log("✅ idUsuario extraído del token:", tokenPayload.userId);
                 }
             } catch (tokenErr) {
                 console.error("❌ Error parseando token:", tokenErr);
-                throw new Error('Error procesando la respuesta del servidor');
             }
         }
 
-        // Verificar que tenemos idUsuario
-        if (!localStorage.getItem('idUsuario')) {
-            throw new Error('No se pudo obtener el ID de usuario. Contacta al soporte.');
-        }
-
         // Guardar para mascotas
-        localStorage.setItem("mascota_idUsuario", localStorage.getItem('idUsuario'));
+        if (idUsuario) {
+            localStorage.setItem("mascota_idUsuario", idUsuario.toString());
+            if (typeof mascota !== "undefined") {
+                mascota.idUsuario = idUsuario;
+            }
+        }
 
         // Mostrar pantalla principal
         mostrarPantalla('main-app');
         updateUserInfo();
+        await loadUserData();
         setupUserAvatar();
-
-        // Cargar datos después del registro
-        setTimeout(async () => {
-            try {
-                await cargarDatosPerfil();
-                await cargarEstadisticasPerfil();
-                
-                // Crear perfil inicial si no existe
-                await apiFetch('/perfil/guardar', {
-                    method: 'POST',
-                    body: {
-                        idUsuario: parseInt(localStorage.getItem('idUsuario')),
-                        nombreCompleto: userName,
-                        correoElectronico: userEmail,
-                        fechaDeNacimiento: '',
-                        genero: '',
-                        biografia: ''
-                    }
-                });
-                
-                console.log("✅ Perfil inicial creado");
-            } catch (profileError) {
-                console.warn("⚠️ Error creando perfil inicial:", profileError);
-            }
-        }, 200);
 
         // Mensaje de bienvenida
         setTimeout(() => {
@@ -4890,10 +4805,9 @@ async function register() {
                 }, 3000);
             }
             
-            // Mostrar tutorial inicial si es primer registro
             const firstTime = !localStorage.getItem('tutorialVisto');
             if (firstTime) {
-                alert('🎉 ¡Bienvenido a MindWeb! Te recomendamos completar tu perfil y explorar las diferentes secciones para conocer todas las funciones disponibles.');
+                alert('🎉 ¡Bienvenido a MindWeb! Te recomendamos explorar las diferentes secciones para conocer todas las funciones disponibles.');
                 localStorage.setItem('tutorialVisto', 'true');
             }
         }, 100);
@@ -4901,29 +4815,20 @@ async function register() {
     } catch (err) {
         console.error('❌ Error en registro:', err);
         
-        // Mensajes de error más específicos
         let errorMsg = 'Error al registrarse';
-        
-        if (err.message.includes('ya existe') || err.message.includes('duplicate') || err.payload?.error?.includes('ya existe')) {
+        if (err.message.includes('ya existe') || err.message.includes('duplicate')) {
             errorMsg = 'Este correo ya está registrado. ¿Quieres iniciar sesión?';
         } else if (err.message.includes('Network Error') || err.message.includes('Failed to fetch')) {
             errorMsg = 'Error de conexión. Verifica tu internet e intenta nuevamente.';
         } else if (err.message.includes('email') || err.message.includes('correo')) {
             errorMsg = 'Por favor, ingresa un correo electrónico válido.';
-        } else if (err.message.includes('No se pudo obtener')) {
-            errorMsg = 'Error en la respuesta del servidor. Intenta nuevamente.';
         } else {
-            errorMsg = 'Error: ' + (err.message || 'Desconocido');
+            errorMsg = 'Error: ' + err.message;
         }
         
         alert(errorMsg);
         
-        // Limpiar campos de contraseña
-        document.getElementById('register-password').value = '';
-        document.getElementById('register-confirm').value = '';
-        
     } finally {
-        // Restaurar botón
         if (registerBtn) {
             registerBtn.textContent = originalText;
             registerBtn.disabled = false;
@@ -4931,64 +4836,46 @@ async function register() {
     }
 }
 
-// 🔥 FUNCIÓN AUXILIAR PARA CARGAR ESTADÍSTICAS DESPUÉS DEL LOGIN
-async function cargarEstadisticasPerfil() {
-    try {
-        const data = await apiFetch('/estadisticas/generales');
-        
-        // Guardar estadísticas en localStorage
-        localStorage.setItem('emocionesRegistradas', data.emocionesRegistradas || 0);
-        localStorage.setItem('ejerciciosRealizados', data.ejerciciosRealizados || 0);
-        localStorage.setItem('retosCompletados', data.retosCompletados || 0);
-        localStorage.setItem('diasConsecutivos', data.diasConsecutivos || 0);
-
-        // Actualizar UI si existe
-        if (typeof updateProfileStats === 'function') {
-            updateProfileStats();
-        }
-        
-        console.log("📊 Estadísticas cargadas:", data);
-        return data;
-    } catch (error) {
-        console.warn("⚠️ No se pudieron cargar estadísticas:", error);
-        // Usar valores por defecto
-        return {
-            emocionesRegistradas: 0,
-            ejerciciosRealizados: 0,
-            retosCompletados: 0,
-            diasConsecutivos: 0
-        };
-    }
-}
-
-// 🔥 MEJORAR LA VERIFICACIÓN DE SESIÓN
+// 🔥 FUNCIÓN AUXILIAR PARA VERIFICAR SESIÓN (SIN CAMBIOS)
 function verificarSesion() {
-    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     const user = localStorage.getItem('user');
     const idUsuario = localStorage.getItem('idUsuario');
     
     if (token && user && idUsuario) {
-        try {
-            const userData = JSON.parse(user);
-            console.log("🔐 Sesión activa - Usuario:", userData.Nombre || userData.nombre || 'Usuario');
-            return true;
-        } catch (e) {
-            console.error("❌ Error parseando datos de usuario:", e);
-            return false;
-        }
+        console.log("🔐 Sesión activa - Usuario:", JSON.parse(user).Nombre || JSON.parse(user).nombre);
+        return true;
     } else {
         console.log("🔓 No hay sesión activa");
         
-        // Limpiar datos inconsistentes
-        if (token && !user) {
-            console.warn("⚠️ Token sin datos de usuario, limpiando...");
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('token');
+        if ((token && !user) || (user && !token)) {
+            console.warn("⚠️ Datos de sesión inconsistentes, limpiando...");
+            logout();
         }
         
         return false;
     }
 }
+
+// 🔥 INICIALIZAR AL CARGAR LA PÁGINA (SIN CAMBIOS)
+document.addEventListener('DOMContentLoaded', function() {
+    const tieneSesion = verificarSesion();
+    
+    if (tieneSesion) {
+        console.log("🔄 Usuario ya logueado, mostrando app principal...");
+        mostrarPantalla('main-app');
+        updateUserInfo();
+        setupUserAvatar();
+        
+        setTimeout(() => {
+            loadUserData().catch(err => console.warn("⚠️ Error cargando datos:", err));
+            cargarDatosPerfil().catch(err => console.warn("⚠️ Error cargando perfil:", err));
+        }, 500);
+    } else {
+        console.log("👋 Mostrando pantalla de bienvenida");
+        mostrarPantalla('welcome-screen');
+    }
+});
 
 // ==================== CARGAR PERFIL DESDE LA API (SQLite) ====================
 async function cargarDatosPerfil() {
