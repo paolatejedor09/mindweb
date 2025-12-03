@@ -5179,34 +5179,66 @@ function logout() {
     if (!confirm('¿Estás seguro de que quieres cerrar sesión?')) {
         return;
     }
-    
-    // Limpiar localStorage
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userAvatar');
-    localStorage.removeItem('mascota_idUsuario');
-    localStorage.removeItem('idUsuario');
-    
-    // Limpiar también otros datos de sesión
-    ['ejerciciosRealizados', 'diasConsecutivos', 'emocionesRegistradas', 'retosCompletados'].forEach(item => {
-        localStorage.removeItem(item);
-    });
 
-    // Redirigir a pantalla de bienvenida
-    mostrarPantalla('welcome-screen');
-    
-    // Limpiar formularios
+    console.log("🧹 Cerrando sesión y limpiando datos...");
+
+    // ================================
+    // 1️⃣ LIMPIAR LOCALSTORAGE
+    // ================================
+    const claves = [
+        'authToken', 'token', 'user', 'userName', 'userEmail', 'userAvatar',
+        'mascota_idUsuario', 'idUsuario', 'idMascota', 'mascotaSeleccionada',
+        'nivelMascota', 'emociones', 'retos',
+        'ejerciciosRealizados', 'diasConsecutivos', 'emocionesRegistradas',
+        'retosCompletados'
+    ];
+
+    claves.forEach(k => localStorage.removeItem(k));
+
+    // ================================
+    // 2️⃣ LIMPIAR SESSIONSTORAGE
+    // ================================
+    sessionStorage.clear();
+
+    // ================================
+    // 3️⃣ LIMPIAR VARIABLES GLOBALES
+    // ================================
+    window.usuarioActual = null;
+    window.mascotaActual = null;
+    window.emocionSeleccionada = null;
+    window.videoEnReproduccion = false;
+
+    // ================================
+    // 4️⃣ LIMPIAR MEDIOS (GIFs/VIDEOS)
+    // ================================
+    if (typeof limpiarMediosMascota === "function") {
+        limpiarMediosMascota();
+    }
+
+    // ================================
+    // 5️⃣ LIMPIAR EL DOM DE LA MASCOTA
+    // ================================
+    const imgMascota = document.getElementById('imgMascota');
+    if (imgMascota) imgMascota.src = "";
+
+    const nombreMascota = document.getElementById('nombreMascota');
+    if (nombreMascota) nombreMascota.textContent = "";
+
+    // ================================
+    // 6️⃣ LIMPIAR FORMULARIOS DEL LOGIN
+    // ================================
     const loginForm = document.getElementById('login-screen');
     if (loginForm) {
         loginForm.querySelectorAll('input').forEach(input => input.value = '');
     }
-    
-    console.log("👋 Sesión cerrada exitosamente");
-}
 
+    // ================================
+    // 7️⃣ REDIRIGIR A BIENVENIDA
+    // ================================
+    mostrarPantalla('welcome-screen');
+
+    console.log("✔ Sesión cerrada completamente");
+}
 
 // ==================== GUARDAR PERFIL EN SQLite ====================
 async function guardarPerfil() {
