@@ -1,7 +1,7 @@
 // server.js - DUAL DB: SQL Server (local) + SQLite (producción) 
 const express = require('express');
 const cors = require('cors');
-const sql = require('mssql');
+const mssql = require('mssql'); 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
@@ -63,51 +63,27 @@ function authenticateToken(req, res, next) {
 }
 
 // ------------------------------------------------------
-//  BASE DE DATOS AUTOMÁTICA: SQL SERVER LOCAL / SQLITE HOSTING
+//  BASE DE DATOS: SQL SERVER (LOCAL)
 // ------------------------------------------------------
-const sql = require('mssql');
-const sqlite3 = require('sqlite3').verbose();
+const dbConfig = {
+  user: process.env.DB_USER || 'sa',
+  password: process.env.DB_PASSWORD || 'salud123',
+  server: process.env.DB_SERVER || 'localhost',
+  database: process.env.DB_NAME || 'Salud_mental',
+  options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true }
+};
 
 let pool;      // SQL Server
 let sqlite;    // SQLite3
 
-// Config SQL Server solo para LOCAL
-const dbConfig = {
-  user: 'sa',
-  password: 'salud123',
-  server: 'localhost',
-  database: 'Salud_mental',
-  options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true }
-};
-
 async function connectSqlServer() {
   try {
-    pool = await sql.connect(dbConfig);
-    console.log('✅ Conectado a SQL Server (Local)');
+    pool = await msmssql.connect(dbConfig);  // <-- CAMBIAR 'sql' POR 'mssql'
+    console.log('✅ Conectado a SQL Server');
   } catch (err) {
     console.error('❌ Error conectando a SQL Server:', err.message);
   }
 }
-
-// Inicialización automática
-function iniciarBaseDatos() {
-  if (isLocal) {
-    // LOCAL → SQL SERVER
-    connectSqlServer();
-  } else {
-    // HOSTING → SQLITE
-    sqlite = new sqlite3.Database('./database.sqlite', (err) => {
-      if (err) {
-        console.error('❌ Error conectando SQLite:', err.message);
-      } else {
-        console.log('📦 SQLite iniciado correctamente (Hosting)');
-      }
-    });
-  }
-}
-
-iniciarBaseDatos();
-
 // ------------------------------------------------------
 //  BASE DE DATOS: SQLITE (PRODUCCIÓN / CELULAR) - VERSIÓN MEJORADA
 // ------------------------------------------------------
@@ -391,8 +367,8 @@ function sqlRequestFromParams(params = {}) {
   const req = pool.request();
   for (const key of Object.keys(params)) {
     const value = params[key];
-    if (typeof value === "number") req.input(key, sql.Int, value);
-    else req.input(key, sql.NVarChar, value);
+    if (typeof value === "number") req.input(key, msmssql.Int, value);      // <-- CAMBIAR
+    else req.input(key, msmssql.NVarChar, value);                           // <-- CAMBIAR
   }
   return req;
 }
@@ -1107,7 +1083,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
     // ======================================================
     // SQL SERVER
     // ======================================================
-    const transaction = new sql.Transaction(pool);
+    const transaction = new mssql.Transaction(pool);
     await transaction.begin();
 
     try {
@@ -1115,13 +1091,13 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       // desactivar todas
       await tx
-        .input("IdUsuario", sql.Int, IdUsuario)
+        .input("IdUsuario", mssql.Int, IdUsuario)
         .query(`UPDATE UsuarioMascota SET Activa = 0 WHERE IdUsuario = @IdUsuario`);
 
       // buscar si ya tenía esta mascota
       const existente = await tx
-        .input("IdUsuario", sql.Int, IdUsuario)
-        .input("Tipo", sql.NVarChar, Tipo)
+        .input("IdUsuario", mssql.Int, IdUsuario)
+        .input("Tipo", mssql.NVarChar, Tipo)
         .query(`
           SELECT TOP 1 * FROM UsuarioMascota
           WHERE IdUsuario = @IdUsuario AND Tipo = @Tipo
@@ -1130,7 +1106,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       if (existente.recordset.length > 0) {
         const masc = existente.recordset[0];
-        await tx.input("IdUsuarioMascota", sql.Int, masc.IdUsuarioMascota)
+        await tx.input("IdUsuarioMascota", mssql.Int, masc.IdUsuarioMascota)
           .query(`UPDATE UsuarioMascota SET Activa = 1 WHERE IdUsuarioMascota = @IdUsuarioMascota`);
 
         await transaction.commit();
@@ -1139,7 +1115,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       // buscar mascota base
       const mascotaBase = await tx
-        .input("Tipo", sql.NVarChar, Tipo)
+        .input("Tipo", mssql.NVarChar, Tipo)
         .query(`SELECT TOP 1 * FROM Mascotas WHERE Tipo = @Tipo`);
 
       if (mascotaBase.recordset.length === 0) {
@@ -1151,9 +1127,9 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       // insertar nueva adopción
       const inserted = await tx
-        .input("IdUsuario", sql.Int, IdUsuario)
-        .input("IdMascota", sql.Int, m.IdMascota)
-        .input("Tipo", sql.NVarChar, m.Tipo)
+        .input("IdUsuario", mssql.Int, IdUsuario)
+        .input("IdMascota", mssql.Int, m.IdMascota)
+        .input("Tipo", mssql.NVarChar, m.Tipo)
         .query(`
           INSERT INTO UsuarioMascota
           (IdUsuario, IdMascota, Tipo, FechaAdopcion, Activa,
