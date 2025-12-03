@@ -78,7 +78,7 @@ let sqlite;    // SQLite3
 
 async function connectSqlServer() {
   try {
-    pool = await msmssql.connect(dbConfig);  // <-- CAMBIAR 'sql' POR 'mssql'
+    pool = await mssql.connect(dbConfig);  // <-- CAMBIAR 'sql' POR 'mssql'
     console.log('✅ Conectado a SQL Server');
   } catch (err) {
     console.error('❌ Error conectando a SQL Server:', err.message);
@@ -367,8 +367,8 @@ function sqlRequestFromParams(params = {}) {
   const req = pool.request();
   for (const key of Object.keys(params)) {
     const value = params[key];
-    if (typeof value === "number") req.input(key, msmssql.Int, value);      // <-- CAMBIAR
-    else req.input(key, msmssql.NVarChar, value);                           // <-- CAMBIAR
+    if (typeof value === "number") req.input(key, mssql.Int, value);      // <-- CAMBIAR
+    else req.input(key, mssql.NVarChar, value);                           // <-- CAMBIAR
   }
   return req;
 }
@@ -1024,7 +1024,7 @@ app.get('/api/mascota/actual', authenticateToken, async (req, res) => {
 });
 
 // =========================================================
-// 🐾 MASCOTA - SELECCIONAR / ADOPTAR
+// 🐾 MASCOTA - SELECCIONAR / ADOPTAR (VERSIÓN CORREGIDA)
 // =========================================================
 app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
   const Tipo = req.body.Tipo;
@@ -1081,21 +1081,21 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
     }
 
     // ======================================================
-    // SQL SERVER
+    // SQL SERVER (VERSIÓN CORREGIDA)
     // ======================================================
     const transaction = new mssql.Transaction(pool);
     await transaction.begin();
 
     try {
-      const tx = new sql.Request(transaction);
-
-      // desactivar todas
-      await tx
+      // 1. Desactivar todas las mascotas del usuario
+      const request1 = new mssql.Request(transaction);
+      await request1
         .input("IdUsuario", mssql.Int, IdUsuario)
         .query(`UPDATE UsuarioMascota SET Activa = 0 WHERE IdUsuario = @IdUsuario`);
 
-      // buscar si ya tenía esta mascota
-      const existente = await tx
+      // 2. Buscar si ya tenía esta mascota
+      const request2 = new mssql.Request(transaction);
+      const existente = await request2
         .input("IdUsuario", mssql.Int, IdUsuario)
         .input("Tipo", mssql.NVarChar, Tipo)
         .query(`
@@ -1106,15 +1106,20 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       if (existente.recordset.length > 0) {
         const masc = existente.recordset[0];
-        await tx.input("IdUsuarioMascota", mssql.Int, masc.IdUsuarioMascota)
+        
+        // Activar la mascota existente
+        const request3 = new mssql.Request(transaction);
+        await request3
+          .input("IdUsuarioMascota", mssql.Int, masc.IdUsuarioMascota)
           .query(`UPDATE UsuarioMascota SET Activa = 1 WHERE IdUsuarioMascota = @IdUsuarioMascota`);
 
         await transaction.commit();
         return res.json(masc);
       }
 
-      // buscar mascota base
-      const mascotaBase = await tx
+      // 3. Buscar mascota base en tabla Mascotas
+      const request4 = new mssql.Request(transaction);
+      const mascotaBase = await request4
         .input("Tipo", mssql.NVarChar, Tipo)
         .query(`SELECT TOP 1 * FROM Mascotas WHERE Tipo = @Tipo`);
 
@@ -1125,8 +1130,9 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 
       const m = mascotaBase.recordset[0];
 
-      // insertar nueva adopción
-      const inserted = await tx
+      // 4. Insertar nueva adopción
+      const request5 = new mssql.Request(transaction);
+      const inserted = await request5
         .input("IdUsuario", mssql.Int, IdUsuario)
         .input("IdMascota", mssql.Int, m.IdMascota)
         .input("Tipo", mssql.NVarChar, m.Tipo)
@@ -1157,7 +1163,7 @@ app.post('/api/mascota/seleccionar', authenticateToken, async (req, res) => {
 });
 
 // =========================================================
-// 🐾 MASCOTA - ACTUALIZAR PARÁMETROS
+// 🐾 MASCOTA - ACTUALIZAR PARÁMETROS (CORREGIDO)
 // =========================================================
 app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
   try {
@@ -1188,7 +1194,7 @@ app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
           data.Experiencia,
           data.ExperienciaNecesaria,
           data.Felicidad,
-          data.Energia,
+          data.Energia,  // <-- CORRECTO: Sin tilde
           data.Hambre,
           data.Monedas,
           data.Estado,
@@ -1213,14 +1219,22 @@ app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: "No autorizado" });
 
     await sqlRequestFromParams({
-      ...data
+      Nivel: data.Nivel,
+      Experiencia: data.Experiencia,
+      ExperienciaNecesaria: data.ExperienciaNecesaria,
+      Felicidad: data.Felicidad,
+      Energia: data.Energia,  // <-- IMPORTANTE: Sin tilde, como en tu tabla SQL Server
+      Hambre: data.Hambre,
+      Monedas: data.Monedas,
+      Estado: data.Estado,
+      IdUsuarioMascota: data.IdUsuarioMascota
     }).query(`
       UPDATE UsuarioMascota SET
         Nivel=@Nivel,
         Experiencia=@Experiencia,
         ExperienciaNecesaria=@ExperienciaNecesaria,
         Felicidad=@Felicidad,
-        Energia=@Energia,
+        Energia=@Energia,  -- <-- Sin tilde aquí también
         Hambre=@Hambre,
         Monedas=@Monedas,
         Estado=@Estado
@@ -1234,14 +1248,13 @@ app.put('/api/mascota/actualizar', authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Error actualizando mascota" });
   }
 });
-
 // ----------------- ESTADÍSTICAS -----------------
 app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
     if (USE_SQLITE) {
-      // SOLO CONSULTAS - NO CREAR TABLAS
+      // SQLite: usa ProgresoRetos (como ya tienes)
       const emocionesResult = await sqliteGet(
         'SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = ?',
         [userId]
@@ -1252,8 +1265,9 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
         [userId]
       );
 
+      // ✅ SQLite MANTIENE ProgresoRetos
       const retosResult = await sqliteGet(
-        "SELECT COUNT(*) as Total FROM Retos WHERE IdUsuario = ? AND Estado = 'Cumplido'",
+        "SELECT COUNT(*) as Total FROM ProgresoRetos WHERE IdUsuario = ? AND Completado = 1",
         [userId]
       );
 
@@ -1271,19 +1285,17 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
     }
 
     // ---------------- SQL SERVER ----------------
-    // CORRECCIÓN: Asegurar que la conexión a SQL Server esté disponible
-    if (!sql) {
-      throw new Error('SQL Server no configurado');
-    }
-
+    // ✅ SQL Server: usa Retos (NO ProgresoRetos)
+    
     const emocionesResult = await sqlRequestFromParams({ idUsuario: userId })
       .query('SELECT COUNT(*) as Total FROM RegistroEmocional WHERE IdUsuario = @idUsuario');
 
     const ejerciciosResult = await sqlRequestFromParams({ idUsuario: userId })
       .query('SELECT COUNT(*) as Total FROM SesionesEjercicio WHERE IdUsuario = @idUsuario');
 
+    // ✅ CORRECCIÓN AQUÍ: Cambiar ProgresoRetos por Retos
     const retosResult = await sqlRequestFromParams({ idUsuario: userId })
-      .query("SELECT COUNT(*) as Total FROM ProgresoRetos WHERE IdUsuario = @idUsuario AND Completado = 1");
+      .query("SELECT COUNT(*) as Total FROM Retos WHERE IdUsuario = @idUsuario AND Estado = 'Cumplido'");
 
     const diasResult = await sqlRequestFromParams({ idUsuario: userId })
       .query(`SELECT COUNT(DISTINCT CONVERT(DATE, FechaRegistro)) as Dias 
@@ -1299,8 +1311,15 @@ app.get('/api/estadisticas/generales', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo estadísticas:', error);
-    res.status(500).json({ error: 'Error al obtener estadísticas' });
+    console.error('❌ Error obteniendo estadísticas:', error.message);
+    
+    // Devolver valores por defecto
+    return res.json({
+      emocionesRegistradas: 0,
+      ejerciciosRealizados: 0,
+      retosCompletados: 0,
+      diasConsecutivos: 0
+    });
   }
 });
 
@@ -1337,7 +1356,7 @@ app.post('/api/perfil/guardar', async (req, res) => {
 
     // ---------------- SQL SERVER ----------------
     // CORRECCIÓN: Asegurar que la conexión a SQL Server esté disponible
-    if (!sql) {
+    if (!mssql) {
       throw new Error('SQL Server no configurado');
     }
 
@@ -1420,3 +1439,8 @@ app.listen(PORT, () => {
   console.log(`🗄️ Usando DB: ${USE_SQLITE ? 'SQLite (RAILWAY/PRODUCTION)' : 'SQL Server (LOCAL)'}`);
   console.log('══════════════════════════════════════');
 });
+
+
+
+
+
