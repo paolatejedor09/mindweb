@@ -4484,31 +4484,123 @@ stat-card {
     
     <script>
 
-
-// ==================== LOAD USER DATA (CORREGIDA) ====================
+        // ==================== LOAD USER DATA (UNIFICADA) ====================
 async function loadUserData() {
     try {
         console.log("📥 Cargando datos del usuario...");
         
-        // 1. Actualizar información básica
+        // 1. Verificar y obtener ID de usuario
+        const idUsuario = initializeUserId();
+        if (!idUsuario) {
+            console.warn("⚠️ No se pudo obtener idUsuario. El usuario necesita iniciar sesión.");
+            return;
+        }
+        
+        // 2. Actualizar información básica del usuario (UI)
         updateUserInfo();
         setupUserAvatar();
         
-        // 2. Cargar perfil (si la función existe)
-        if (typeof cargarDatosPerfil === 'function') {
-            await cargarDatosPerfil();
+        // 3. Cargar perfil del usuario desde la base de datos
+        await cargarDatosPerfil();
+        
+        // 4. Cargar estadísticas del usuario
+        await cargarEstadisticasPerfil();
+        
+        // 5. Cargar emociones del usuario
+        await cargarEmocionesDesdeBD();
+        
+        // 6. Cargar mascota del usuario (si existe)
+        await cargarMascotaExistente();
+        
+        // 7. Cargar retos del usuario
+        await cargarRetos();
+        
+        // 8. Inicializar componentes visuales
+        if (typeof inicializarCalendario === 'function') {
+            inicializarCalendario();
         }
         
-        // 3. Cargar estadísticas (si la función existe)
-        if (typeof cargarEstadisticasPerfil === 'function') {
-            await cargarEstadisticasPerfil();
+        if (typeof inicializarGraficos === 'function') {
+            setTimeout(() => inicializarGraficos(), 500);
         }
         
-        console.log("✅ Datos del usuario cargados");
+        // 9. Actualizar estadísticas en la UI
+        if (typeof updateProfileStats === 'function') {
+            updateProfileStats();
+        }
+        
+        // 10. Inicializar detector de cambios de usuario para mascotas
+        if (typeof inicializarDetectorUsuario === 'function') {
+            inicializarDetectorUsuario();
+        }
+        
+        // 11. Actualizar estado de la mascota
+        if (typeof actualizarMascota === 'function') {
+            actualizarMascota();
+        }
+        
+        console.log("✅ Todos los datos del usuario cargados correctamente");
+        
     } catch (error) {
         console.error("❌ Error en loadUserData:", error);
+        
+        // Fallback: intentar cargar datos básicos desde localStorage
+        try {
+            console.log("🔄 Intentando cargar datos desde localStorage como fallback...");
+            
+            // Datos básicos del usuario
+            updateUserInfo();
+            setupUserAvatar();
+            
+            // Estadísticas desde localStorage
+            if (typeof updateProfileStats === 'function') {
+                updateProfileStats();
+            }
+            
+            // Emociones desde localStorage (si existen)
+            const emocionesBackup = localStorage.getItem('emocionesBackup');
+            if (emocionesBackup) {
+                try {
+                    window.emocion = JSON.parse(emocionesBackup);
+                    console.log("📝 Emociones cargadas desde backup localStorage");
+                } catch (e) {
+                    console.warn("⚠️ Error parseando emociones de backup");
+                }
+            }
+            
+            console.log("✅ Datos básicos cargados desde localStorage");
+            
+        } catch (fallbackError) {
+            console.error("❌ Error en fallback de loadUserData:", fallbackError);
+        }
     }
 }
+
+// Función auxiliar para verificar si las funciones necesarias existen
+function verificarFuncionesDisponibles() {
+    const funcionesRequeridas = [
+        'initializeUserId',
+        'updateUserInfo',
+        'setupUserAvatar',
+        'cargarDatosPerfil',
+        'cargarEstadisticasPerfil',
+        'cargarEmocionesDesdeBD',
+        'cargarMascotaExistente',
+        'cargarRetos',
+        'updateProfileStats',
+        'actualizarMascota'
+    ];
+    
+    console.log("🔍 Verificando funciones disponibles...");
+    funcionesRequeridas.forEach(func => {
+        if (typeof window[func] === 'function') {
+            console.log(`✅ ${func} está disponible`);
+        } else {
+            console.warn(`⚠️ ${func} NO está disponible`);
+        }
+    });
+}
+
    // ==================== FUNCIONES FALTANTES ====================
 
 // 1. initializeUserId (FALTA ESTA)
@@ -7984,51 +8076,7 @@ function limpiarMediosMascota() {
     console.log("✅ Medios limpiados correctamente");
 }
 
-async function loadUserData() {
-    try {
-        // Cargar emociones desde BD
-        const emocionesData = await apiFetch('/emociones/usuario');
-        emociones = emocionesData.map(e => ({
-            tipo: e.TipoEmocion,
-            fecha: new Date(e.FechaRegistro).toLocaleDateString(),
-            hora: new Date(e.FechaRegistro).toLocaleTimeString(),
-            notas: e.Nota
-        }));
 
-        // Cargar mascota desde BD
-        const mascotaData = await apiFetch('/mascota/actual');
-        if (mascotaData.mascota) {
-            mascota.tipo = mascotaData.mascota.Tipo;
-            mascota.seleccionada = true;
-
-            document.querySelector('.mascota-seleccion-container').style.display = 'none';
-            document.getElementById('mascota-activa-container').style.display = 'block';
-
-            document.querySelectorAll('.pet-option-card').forEach(opcion => {
-                if (opcion.getAttribute('data-pet') === mascotaData.mascota.Tipo) {
-                    opcion.classList.add('selected');
-                } else {
-                    opcion.style.display = 'none';
-                }
-            });
-        }
-
-        retos = JSON.parse(localStorage.getItem('retos')) || [];
-        actualizarListaRetos();
-
-        actualizarEstadisticas();
-        if (typeof inicializarCalendario === 'function') inicializarCalendario();
-        setTimeout(inicializarGraficos, 500);
-        actualizarMascota();
-        updateProfileStats();
-
-    } catch (error) {
-        console.error('Error cargando datos:', error);
-
-        emociones = JSON.parse(localStorage.getItem('emociones')) || [];
-        retos = JSON.parse(localStorage.getItem('retos')) || [];
-    }
-}
 
 
 
