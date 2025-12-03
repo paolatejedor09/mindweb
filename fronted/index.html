@@ -5288,8 +5288,6 @@ async function guardarPerfil() {
 
 async function cargarDatosPerfil() {
     try {
-        // console.log("📥 Cargando datos del perfil..."); 
-        
         const idUsuario = initializeUserId();
         if (!idUsuario) {
             updateUserInfo();
@@ -5297,27 +5295,26 @@ async function cargarDatosPerfil() {
             return;
         }
 
-        // Intentar cargar perfil silenciosamente
-        try {
-            const data = await apiFetch(`/perfil/completo?idUsuario=${idUsuario}`);
-            
-            if (data && data.NombreCompleto !== undefined) {
-                // Rellenar formulario...
-            }
-        } catch (apiError) {
-            // Error completamente silencioso ✓
-        }
+        // 🔥 Eliminado: NO existe /perfil/completo
+        // Intento silencioso eliminado completamente
+        // ya que no existe esa ruta en el backend.
 
+        // Actualizar info del usuario con lo que sí existe
         updateUserInfo();
         setupUserAvatar();
-        await cargarEstadisticasPerfil();
+
+        // Cargar estadísticas reales (esta ruta sí existe)
+        if (typeof cargarEstadisticasPerfil === 'function') {
+            await cargarEstadisticasPerfil();
+        }
 
     } catch (err) {
-        // console.error('❌ Error al cargar perfil:', err); // ← Ya comentado ✓
+        // Fallback silencioso
         updateUserInfo();
         setupUserAvatar();
     }
 }
+
 // ==================== CARGAR ESTADÍSTICAS DESDE SQLite ====================
 async function cargarEstadisticasPerfil() {
     try {
