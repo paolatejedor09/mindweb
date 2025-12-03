@@ -63,27 +63,50 @@ function authenticateToken(req, res, next) {
 }
 
 // ------------------------------------------------------
-//  BASE DE DATOS: SQL SERVER (LOCAL)
+//  BASE DE DATOS AUTOMÁTICA: SQL SERVER LOCAL / SQLITE HOSTING
 // ------------------------------------------------------
-const dbConfig = {
-  user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD || 'salud123',
-  server: process.env.DB_SERVER || 'localhost',
-  database: process.env.DB_NAME || 'Salud_mental',
-  options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true }
-};
+const sql = require('mssql');
+const sqlite3 = require('sqlite3').verbose();
 
 let pool;      // SQL Server
 let sqlite;    // SQLite3
 
+// Config SQL Server solo para LOCAL
+const dbConfig = {
+  user: 'sa',
+  password: 'salud123',
+  server: 'localhost',
+  database: 'Salud_mental',
+  options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true }
+};
+
 async function connectSqlServer() {
   try {
     pool = await sql.connect(dbConfig);
-    console.log('✅ Conectado a SQL Server');
+    console.log('✅ Conectado a SQL Server (Local)');
   } catch (err) {
     console.error('❌ Error conectando a SQL Server:', err.message);
   }
 }
+
+// Inicialización automática
+function iniciarBaseDatos() {
+  if (isLocal) {
+    // LOCAL → SQL SERVER
+    connectSqlServer();
+  } else {
+    // HOSTING → SQLITE
+    sqlite = new sqlite3.Database('./database.sqlite', (err) => {
+      if (err) {
+        console.error('❌ Error conectando SQLite:', err.message);
+      } else {
+        console.log('📦 SQLite iniciado correctamente (Hosting)');
+      }
+    });
+  }
+}
+
+iniciarBaseDatos();
 
 // ------------------------------------------------------
 //  BASE DE DATOS: SQLITE (PRODUCCIÓN / CELULAR) - VERSIÓN MEJORADA
