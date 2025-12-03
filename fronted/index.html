@@ -8032,34 +8032,52 @@ async function testConexion() {
 function limpiarMediosMascota() {
     console.log("🧹 Limpiando medios visuales...");
 
+    // -----------------------------------------
     // 1️⃣ DETENER Y REINICIAR TODOS LOS VIDEOS
+    // -----------------------------------------
     const videos = document.querySelectorAll("video");
     videos.forEach(video => {
         try {
             video.pause();
             video.currentTime = 0;
 
-            // Ocultarlo si está en pantalla
+            // Ocultar mientras se limpia
             video.style.display = "none";
+
+            // Remover src opcional para forzar recarga limpia
+            if (video.src) {
+                const temp = video.src;
+                video.removeAttribute("src");
+                setTimeout(() => {
+                    video.setAttribute("src", temp);
+                    video.load();
+                }, 20);
+            }
         } catch (e) {
             console.warn("⚠ No se pudo limpiar video:", e);
         }
     });
 
-    // 2️⃣ REINICIAR TODAS LAS IMÁGENES (incluye GIFs)
+    // -----------------------------------------
+    // 2️⃣ LIMPIAR GIFS E IMÁGENES
+    // -----------------------------------------
     const imagenes = document.querySelectorAll("img, .gif-mascota");
     imagenes.forEach(img => {
         try {
             const src = img.src;
-            img.src = "";
-            img.offsetHeight; // Forzar reflow
-            img.src = src;
+
+            img.removeAttribute("src"); // Limpieza real
+            setTimeout(() => {
+                img.setAttribute("src", src);
+            }, 20); // Evita congelamientos en Railway
         } catch (e) {
             console.warn("⚠ No se pudo reiniciar imagen/gif:", e);
         }
     });
 
-    // 3️⃣ CERRAR MODALES DE VIDEO (tu modal de subida de nivel)
+    // -----------------------------------------
+    // 3️⃣ CERRAR MODALES DE VIDEO
+    // -----------------------------------------
     const modal = document.getElementById("modal-video-nivel");
     if (modal) {
         try {
@@ -8070,9 +8088,16 @@ function limpiarMediosMascota() {
         }
     }
 
+    // -----------------------------------------
+    // 4️⃣ RESTAURAR VISIBILIDAD
+    // (si no, los videos quedan invisibles)
+    // -----------------------------------------
+    videos.forEach(video => {
+        video.style.display = "";
+    });
+
     console.log("✅ Medios limpiados correctamente");
 }
-
 
 
 
