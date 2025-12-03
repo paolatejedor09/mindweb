@@ -7984,94 +7984,52 @@ function limpiarMediosMascota() {
     console.log("✅ Medios limpiados correctamente");
 }
 
+async function loadUserData() {
+    try {
+        // Cargar emociones desde BD
+        const emocionesData = await apiFetch('/emociones/usuario');
+        emociones = emocionesData.map(e => ({
+            tipo: e.TipoEmocion,
+            fecha: new Date(e.FechaRegistro).toLocaleDateString(),
+            hora: new Date(e.FechaRegistro).toLocaleTimeString(),
+            notas: e.Nota
+        }));
 
+        // Cargar mascota desde BD
+        const mascotaData = await apiFetch('/mascota/actual');
+        if (mascotaData.mascota) {
+            mascota.tipo = mascotaData.mascota.Tipo;
+            mascota.seleccionada = true;
 
+            document.querySelector('.mascota-seleccion-container').style.display = 'none';
+            document.getElementById('mascota-activa-container').style.display = 'block';
 
- 
-
-
-    // =============================================
-    // CARGA DE DATOS DEL USUARIO - CONEXIÓN BD
-    // =============================================
-
-    async function loadUserData() {
-        try {
-            // Cargar emociones desde BD
-            const emocionesData = await apiRequest('/emociones');
-            emociones = emocionesData.map(e => ({
-                tipo: e.TipoEmocion,
-                fecha: new Date(e.FechaRegistro).toLocaleDateString(),
-                hora: new Date(e.FechaRegistro).toLocaleTimeString(),
-                notas: e.Nota
-            }));
-            
-            // Cargar mascota desde BD
-            const mascotaData = await apiRequest('/mascotas');
-            if (mascotaData.mascota) {
-                mascota.tipo = mascotaData.mascota.Tipo;
-                mascota.seleccionada = true;
-                
-                // Ocultar selector y mostrar mascota activa
-                document.querySelector('.mascota-seleccion-container').style.display = 'none';
-                document.getElementById('mascota-activa-container').style.display = 'block';
-                
-                // Actualizar opción seleccionada
-                document.querySelectorAll('.pet-option-card').forEach(opcion => {
-                    if (opcion.getAttribute('data-pet') === mascotaData.mascota.Tipo) {
-                        opcion.classList.add('selected');
-                    } else {
-                        opcion.style.display = 'none';
-                    }
-                });
-            }
-            
-            // Cargar retos desde localStorage (temporal)
-            retos = JSON.parse(localStorage.getItem('retos')) || [];
-            actualizarListaRetos();
-            
-            // Cargar estadísticas de respiración
-            const sesiones = localStorage.getItem('sesionesRespiracion') || '0';
-            const dias = localStorage.getItem('diasConsecutivos') || '0';
-            
-            if (document.getElementById('sesiones-completadas')) {
-                document.getElementById('sesiones-completadas').textContent = sesiones;
-            }
-            if (document.getElementById('dias-consecutivos')) {
-                document.getElementById('dias-consecutivos').textContent = dias;
-            }
-            
-            // Actualizar interfaz
-            actualizarEstadisticas();
-            if (typeof inicializarCalendario === 'function') inicializarCalendario();
-            setTimeout(inicializarGraficos, 500);
-            actualizarMascota();
-            updateProfileStats();
-            
-        } catch (error) {
-            console.error('Error cargando datos:', error);
-            // Fallback: cargar desde localStorage si hay error de BD
-            emociones = JSON.parse(localStorage.getItem('emociones')) || [];
-            retos = JSON.parse(localStorage.getItem('retos')) || [];
+            document.querySelectorAll('.pet-option-card').forEach(opcion => {
+                if (opcion.getAttribute('data-pet') === mascotaData.mascota.Tipo) {
+                    opcion.classList.add('selected');
+                } else {
+                    opcion.style.display = 'none';
+                }
+            });
         }
+
+        retos = JSON.parse(localStorage.getItem('retos')) || [];
+        actualizarListaRetos();
+
+        actualizarEstadisticas();
+        if (typeof inicializarCalendario === 'function') inicializarCalendario();
+        setTimeout(inicializarGraficos, 500);
+        actualizarMascota();
+        updateProfileStats();
+
+    } catch (error) {
+        console.error('Error cargando datos:', error);
+
+        emociones = JSON.parse(localStorage.getItem('emociones')) || [];
+        retos = JSON.parse(localStorage.getItem('retos')) || [];
     }
-
-    function limpiarMediosMascota() {
-    const contenedor = document.getElementById('mascota-display');
-
-    if (!contenedor) return;
-
-    const elementos = contenedor.querySelectorAll("img, video");
-
-    elementos.forEach(el => {
-        if (el.tagName === "VIDEO") {
-            el.pause();
-            el.src = "";
-        }
-        el.remove();
-    });
-
-    contenedor.innerHTML = "";
 }
+
 
 
     
