@@ -557,14 +557,16 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// ----------------- EJERCICIOS - COMPLETAR -----------------
+// ----------------- S - COMPLETAR -----------------
 app.post('/api/ejercicios/completar', authenticateToken, async (req, res) => {
   try {
     const { idEjercicio } = req.body;
     const userId = req.user.userId;
 
-    if (!idEjercicio)
-      return res.status(400).json({ error: 'idEjercicio es requerido' });
+    if (!idEjercicio) {
+     return res.status(400).json({ error: 'idEjercicio es requerido' });
+}
+
 
     if (USE_SQLITE) {
       // SOLO CONSULTAS - NO CREAR TABLAS
