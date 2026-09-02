@@ -13,6 +13,7 @@ require('dotenv').config();
 // ------------------------------------------------------
 const IS_PRODUCTION =
   (process.env.NODE_ENV && process.env.NODE_ENV.toLowerCase() === 'production') ||
+  (process.env.GODADDY && process.env.GODADDY.toLowerCase().trim() === 'true') ||
   (process.env.RAILWAY && process.env.RAILWAY.toLowerCase().trim() === 'true');
 
 const USE_SQLITE =
