@@ -4783,14 +4783,8 @@ function updateProfileStats() {
 // ==================== CONFIGURACIÓN API AUTO ====================
 // Detectar automáticamente si estamos en producción
 function getApiBaseUrl() {
-  // Si estamos en localhost, usa localhost
-  if (window.location.hostname === "localhost" || 
-      window.location.hostname === "127.0.0.1") {
-    return "http://localhost:3000";
-  }
-  
-  // Si estamos en Railway o producción - CAMBIA ESTA URL POR LA TUYA
-  return "https://mindweb-production.up.railway.app";
+    // Usa el mismo origen en local, preview y producción.
+    return window.location.origin;
 }
 
 const API_BASE_URL = getApiBaseUrl();
@@ -4804,16 +4798,18 @@ function _getToken() {
 // Helper minimal API (detecta entorno automáticamente)
 async function apiFetch(path, options = {}) {
   const token = _getToken();
+    const apiPath = path.startsWith('/api/') ? path.slice(4) : path;
   const headers = Object.assign({}, options.headers || {}, {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   });
   
-  // ✅ CORREGIDO: Usa API_BASE_URL dinámica
-  const resp = await fetch(`${API_BASE_URL}/api${path}`, {
+    const resp = await fetch(`${API_BASE_URL}/api${apiPath}`, {
     method: options.method || 'GET',
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
+        body: options.body
+            ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body))
+            : undefined
   });
   let payload = null;
   try { payload = await resp.json(); } catch(e) { payload = null; }
@@ -5405,10 +5401,6 @@ async function cargarEstadisticasPerfil() {
 /* ---------- loadUserData ---------- */
 async function loadUserData() {
     try {
-        // 🔥 COMENTA O ELIMINA ESTA LÍNEA QUE CAUSA EL ERROR:
-        // const emocionesData = await apiRequest('/emociones');
-        
-        // 🔥 REEMPLAZA con esto:
         let emocionesData = [];
         
         // El resto de tu código IGUAL:
@@ -6091,14 +6083,7 @@ async function cargarCalendarioDesdeBD() {
     try {
         console.log('🔄 Cargando emociones para calendario...');
         
-        // 🔥 MÚLTIPLES FALLBACKS: intenta primero con apiFetch, luego con apiRequest
-        let data;
-        try {
-            data = await apiFetch('/emociones/usuario');
-        } catch (error) {
-            console.warn('❌ apiFetch falló, intentando con apiRequest...');
-            data = await apiRequest('/emociones/usuario');
-        }
+        let data = await apiFetch('/emociones/usuario');
 
         console.log('📊 Datos recibidos para calendario:', data);
 
@@ -6530,25 +6515,10 @@ async function completarEjercicio(tipo) {
         console.log('📤 Enviando a /api/ejercicios/completar:', { idEjercicio });
 
         // Llamar al endpoint del backend
-        const response = await fetch('http://localhost:3000/api/ejercicios/completar', {
+        const result = await apiFetch('/ejercicios/completar', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ 
-                idEjercicio: idEjercicio 
-            })
+            body: { idEjercicio }
         });
-
-        // Verificar respuesta
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Error ${response.status}`);
-        }
-
-        // Procesar respuesta exitosa
-        const result = await response.json();
         console.log('✅ Ejercicio guardado:', result);
 
         // Mostrar éxito al usuario
@@ -6618,27 +6588,10 @@ async function guardarDiarioGratitud() {
         console.log('📤 Enviando diario a /api/ejercicios/gratitud');
 
         // Llamar al nuevo endpoint para gratitud
-        const response = await fetch('http://localhost:3000/api/ejercicios/gratitud', {
+        const result = await apiFetch('/ejercicios/gratitud', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ 
-                gratitud1: gratitud1,
-                gratitud2: gratitud2, 
-                gratitud3: gratitud3
-            })
+            body: { gratitud1, gratitud2, gratitud3 }
         });
-
-        // Verificar respuesta
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Error ${response.status}`);
-        }
-
-        // Procesar respuesta exitosa
-        const result = await response.json();
         console.log('✅ Diario de gratitud guardado:', result);
 
         // Mostrar éxito al usuario
@@ -6891,42 +6844,10 @@ const mensajesPositivos = {
 // =============================================
 
 async function apiCall(endpoint, options = {}) {
-    const token = localStorage.getItem("authToken"); // token correcto
-
-    const config = {
-        method: options.method || "GET",
-        headers: {
-            "Content-Type": "application/json",
-        },
-    };
-
-    // 🔥 SI HAY TOKEN → SE ENVÍA CORRECTAMENTE
-    if (token) {
-        config.headers["Authorization"] = "Bearer " + token;
-        console.log("🔐 Token enviado:", token);
-    } else {
-        console.warn("❌ NO HAY TOKEN EN LOCALSTORAGE");
-    }
-
-    // Si hay body → se añade
-    if (options.body) {
-        config.body = typeof options.body === "string"
-            ? options.body
-            : JSON.stringify(options.body);
-    }
-
     try {
-        const response = await fetch(endpoint, config);
-
-        if (!response.ok) {
-            console.warn("⚠ Error API:", response.status, endpoint);
-            return null;
-        }
-
-        return await response.json();
-
+        return await apiFetch(endpoint, options);
     } catch (error) {
-        console.warn("⚠ No hay conexión con backend (offline)");
+        console.warn("⚠ Error API:", endpoint, error.message);
         return null;
     }
 }
@@ -7182,8 +7103,8 @@ async function verificarUsuarioNuevo(userId) {
         console.log("🔍 Verificando si usuario es nuevo...", userId);
         
         // Verificar si ya tiene mascota en la base de datos
-        const mascotasData = await apiRequest(`/api/mascotas/usuario/${userId}`);
-        const tieneMascota = mascotasData && Array.isArray(mascotasData) && mascotasData.length > 0;
+        const mascotaData = await apiFetch('/mascota/actual');
+        const tieneMascota = Boolean(mascotaData && mascotaData.IdUsuarioMascota);
         
         console.log("📊 Usuario tiene mascota:", tieneMascota);
         
@@ -7251,7 +7172,7 @@ function irASeleccionMascota() {
     console.log("🎯 Navegando a selección de mascota...");
     
     // Navegar a la sección de mascotas
-    showSection('mascotas');
+    showSection('mascota');
     
     // Forzar recarga limpia de mascotas
     setTimeout(() => {

@@ -336,24 +336,15 @@ async function iniciarBaseDeDatos() {
   if (USE_SQLITE) {
     console.log("🔄 Iniciando SQLite...");
     initSqlite();
-    
-    // Esperar que SQLite se inicialice, luego crear tablas
-    setTimeout(async () => {
-      if (sqlite) {
-        console.log("🔧 Inicializando tablas SQLite...");
-        await inicializarTablasSQLite();
-        
-        // Test final
-        try {
-          const test = await sqliteGet('SELECT 1 as test');
-          console.log("🧪 Test SQLite exitoso:", test);
-        } catch (testErr) {
-          console.error("❌ Test SQLite falló:", testErr.message);
-        }
-      } else {
-        console.error("❌ SQLite no se inicializó - sqlite es null");
-      }
-    }, 1500);
+
+    await new Promise((resolve, reject) => {
+      const comprobar = () => {
+        if (!sqlite) return reject(new Error('SQLite no se inicializó'));
+        inicializarTablasSQLite().then(resolve).catch(reject);
+      };
+      setTimeout(comprobar, 100);
+    });
+    console.log("🧪 Test SQLite exitoso:", await sqliteGet('SELECT 1 as test'));
     
   } else {
     console.log("🔄 Iniciando SQL Server...");
@@ -1434,7 +1425,7 @@ app.get('/api/health', async (req, res) => {
 // 404
 app.use('*', (req, res) => { res.status(404).json({ error: 'Endpoint no encontrado' }); });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log('══════════════════════════════════════');
   console.log('🚀 SERVIDOR MENTE SANA INICIADO (DUAL DB)');
   console.log(`📄 Página web: http://localhost:${PORT}`);
